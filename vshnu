@@ -1,0 +1,1602 @@
+#!/usr/bin/perl
+BEGIN { unshift @INC, "$ENV{'HOME'}/libp/perl", "$ENV{'HOME'}/lib/perl",
+		      "$ENV{'HOME'}/libp",	"$ENV{'HOME'}/lib" }
+
+$default_vshnucfg = '';
+
+$tmpcwd = "/tmp/vsh$$";
+$tmpenv = "/tmp/env$$";
+
+$debug	  = 0;
+$debug_ch = 0;
+
+# vshnu - an enhanced vsh-like visual shell supplement in Perl
+# Steve Kinzler, kinzler@cs.indiana.edu, Aug 99/Mar 00/Sep 00
+# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
+# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unix
+
+###############################################################################
+## Change log #################################################################
+
+($vname, $version) = qw(vshnu 1.0003);
+
+# 1.0000  07 Nov 2000	Initial public release
+# 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
+
+###############################################################################
+## Initial setup ##############################################################
+
+require 5.002;
+
+use	Term::ReadLine;	# setenv PERL_RL {Gnu,Perl,false}, dflt best available
+
+require Term::Screen;
+use	Term::ANSIColor;
+
+require "dumpvar.pl" if $debug;		# to enable &dumpValue(DATAPTR)
+
+die "$0: stdin not a tty\n"			unless -t;
+die "usage: $0 [ dir ... ]\nVersion $version\n" if $ARGV[0] eq '-h';
+print("$version\n"), exit			if $ARGV[0] eq '-v';
+
+$ch   = $ch_list = $err = ''; $cooked = 0;
+$path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
+$scr  = new Term::Screen or die "$0: cannot create screen ($!)";
+$ENV{'PATH'} = $path; undef $path;	# to get /usr/ucb/stty on Solaris
+$scr->noecho();
+&sigs_on();
+
+$ncolors = $scr->{TERM}->{_Co};
+$color   = $ncolors > 1;
+map($ansicolor{$Term::ANSIColor::attributes{$_} + 0} = $_,
+    keys %Term::ANSIColor::attributes);
+
+$user  = &uid2name($>);
+($host = $ENV{'HOST'} || 'UNKNOWN') =~ s/\..*//;
+$depth = 1;
+
+&setnorun('off'); &longlen('min'); $long = 0;
+require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
+		    ((-f "$ENV{'HOME'}/.vshnucfg") ? "$ENV{'HOME'}/.vshnucfg"
+						   : 'vshnucfg.pl'));
+&typemap('', 1); &keymap('', 1);
+&initopts();
+
+$mail = -f $mailbox;
+
+@cdhist = @cdhist || map({'ls' => $_}, @ARGV);
+(@cdhist) ? ($pwd = $cdhist[0]{'ls'}) : chomp($pwd = `pwd`);
+$pwd ne '' && &cd($pwd) or die "$0: cannot cd $pwd\n";
+undef $pwd;
+
+###############################################################################
+## Main execution loop and subroutines ########################################
+
+&win();
+
+&winch_off();		# ignore any WINCH signals from Gnu ReadLine
+# It's been observed that each "new" may return the same object.
+$rl	  = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
+$rlperl   = $rl->ReadLine eq 'Term::ReadLine::Perl';
+$rl_file  = ($rlperl) ? $rl : new Term::ReadLine 'vshnu file'  || $rl;
+$rl_shell = ($rlperl) ? $rl : new Term::ReadLine 'vshnu shell' || $rl;
+$rl_junk  = ($rlperl) ? $rl : new Term::ReadLine 'vshnu junk'  || $rl;
+undef $rlperl;
+&winch_on();
+
+while (1) {
+	$ch = $scr->getch();
+	$scr->flush_input();	# partly broken in Term::Screen 1.00 *shrug*
+	$ch_list = &scrtruncr($ch_list . sprintf(' 0%o', ord $ch))
+		if $debug_ch;
+
+	$cmd = &keymapcmd();
+	$cdhistp = 0 unless grep { /\bcdhist\b/ } &cmdstrs($cmd);
+	&cmdeval($cmd);
+	&win_err() if $err ne '';
+}
+&quit();
+
+sub keymapcmd {
+	my $map = $keymap;
+	eval "\$map = \\\%keymap_$_[0]" if defined $_[0];
+	my $c   = (defined $_[1]) ? $_[1] : $ch;
+	(exists $$map{$c}) ? $$map{$c} : $$map{''};
+}
+
+sub cmdeval {
+	my $cmd = shift;
+	&echo(&helpstr($ch, '', 8, $cmd)), &ret(),
+	    $norun eq 'once' && &setnorun('off'), &win(), return
+		if $norun &&
+		   grep { ! /\b(cmdeval|dotype|setnorun)\b/ } &cmdstrs($cmd);
+	return &myeval($cmd)	 unless ref $cmd;
+	return &myeval($$cmd[0]) unless ref $$cmd[0];
+	&myeval(&cmdprompt($txt_cmdprompt || 'Choice:', $cmd));
+}
+
+sub keymap {
+	my $_0 = $_[0]; $_0 =~ s/^\*//;		# *map => switch not push
+	my $sw = $&; my $m = '';
+	($_0 ne '' && $_0 eq $keymap[$#keymap] ||
+	 ! defined $_[0]) ? do { pop(@keymap); $m = $keymap[$#keymap] }  :
+	($_0 eq '')	  ? do { @keymap = () }				 :
+	($sw)		  ? do { pop(@keymap); push(@keymap, $m = $_0) } :
+			    push(@keymap, $m = $_0);
+	eval "\$keymap = \\\%keymap_$m";
+	&win_time(), &home() unless $_[1];
+}
+
+sub typemap {
+	my $_0 = $_[0]; $_0 =~ s/^\*//;		# *map => switch not push
+	my $sw = $&; my $m = '';
+	($_0 ne '' && $_0 eq $typemap[$#typemap] ||
+	 ! defined $_[0]) ? do { pop(@typemap); $m = $typemap[$#typemap] } :
+	($_0 eq '')	  ? do { @typemap = () }			   :
+	($sw)		  ? do { pop(@typemap); push(@typemap, $m = $_0) } :
+			    push(@typemap, $m = $_0);
+	eval "\$typemap = \\\%typemap_$m";
+	&win_time(), &home() unless $_[1];
+}
+
+sub cmdstrs {
+	my $c = shift;
+	(! ref $c) ? ($c) : (! ref $$c[0]) ? ($$c[0]) : map { $$_[0] } @$c;
+}
+
+sub setnorun {
+	$norun = ($_[0] eq 'toggle') ? ! $norun :
+		 ($_[0] eq 'once')   ? 'once'	: ($_[0] eq 'on') ? 1 : 0;
+}
+
+###############################################################################
+## Screen drawing subroutines #################################################
+
+sub winat { &win(($_[0]) x 3) }
+
+sub win {
+	$time = time;
+	&ls(); &lscolors();
+
+	$filerows     = &min($#ls + 1, $scr->{ROWS} - 4);
+	$pages	      = ($filerows) ? &ceil(($#ls + 1) / $filerows) : 0;
+	$havefilecols = &min($pages, int($scr->{COLS} / ($minfilelen + 4)));
+	&filecols(); &longlen();
+	$filecols     = &min($havefilecols, ($long) ? 1 :
+			     ($maxfilecols > 0) ? $maxfilecols : 1024);
+	$longlen      = &min($minlonglen, $scr->{COLS} - $minfilelen - 5);
+	$filelen      = int(($scr->{COLS} - (($long) ? $longlen + 1 : 0)) /
+			    ($filecols || 1)) - 4;
+	&page(@_);
+
+	@lstable = ();
+	foreach ($filecol .. $filecol + $filecols - 1) {
+		my @col = @ls[$_ * $filerows .. ($_ + 1) * $filerows - 1];
+		push(@lstable, \@col);
+	}
+
+	my $endc = &min($filecol + $filecols, $pages);
+	my $ptxt = ($filecol <= 0 && $pages <= $filecols) ? ''		   :
+		   ($filecol + 1 == $endc) 		  ? "$endc/$pages" :
+					  ($filecol + 1) . "-$endc/$pages";
+	$scr->clrscr();
+	&win_decor("$user\@$host:", $cwd, $ptxt, 0);
+	&win_row2();
+
+	%drawn = (); &setcdhist('file0', '');
+	$scr->at(2, 0);
+	foreach $row (0 .. $filerow - 1) {
+		my $col = 0; my $file; my $out = '';
+		foreach (@lstable) {
+			last if ($file = $_->[$row]) eq '';
+			$drawn{$file} = [$row, $col];
+			$col += 4 + $filelen;
+			my($s, $l) = &viewfile($file, $filelen);
+			my $t = ' ' x $filelen;
+			substr($t, 0, $l) = $s;
+			$out .= '   ' . ((! $choose{$file}) ? ' ' :
+					 &colored($choose{$file}, $co_decor));
+			$out .= $t;
+			&setcdhist('file0', $file) if $file0 eq '';
+		}
+		$out =~ s/^ //; $out =~ s/\s*$//;
+		print $out, "\n\r";
+	}
+	&win_bag(1);
+	&win_long() if $long;
+
+	&win_time();
+	&win_err();
+}
+
+sub win_err {
+	&home();
+	$scr->puts(colored $err, $co_error), $err = '', return if $err ne '';
+	return unless $mail;
+
+	my $size = -s $mailbox;
+	&msg($txt_mail	  || 'You have mail')	  if $mail ne 'old' && $size;
+	&msg($txt_newmail || 'You have new mail')
+		if $mail eq 'old' && $size > $mailsize;
+	($mail, $mailsize) = ('old', $size);
+}
+
+sub win_row2 {
+	$where =~ s/^\s+$//;
+	my @bits = ();
+	push(@bits, "depth=$depth")   if $depth != 1;
+	push(@bits, "opts=" . join('', sort keys %opts)) if %opts;
+	push(@bits, "where={$where}") if $where =~ /\S/ &&
+		! grep($altls == $_, \@choose, \@cdhist, \@dohist);
+	push(@bits, "long=$longlabel")	 if $longlabel;
+	push(@bits, "cols=$maxfilecols") if ! $long && $maxfilecols;
+	&win_decor('', $lstitle, join(', ', @bits), 1);
+}
+
+sub win_time {
+	my @bits = ();
+	push(@bits, 'run=OFF')			 if $norun;
+	push(@bits, $#choose + 1 . ' chosen')	 if @choose;
+	push(@bits, "keys=$keymap[$#keymap]")    if $keymap[$#keymap]   ne '';
+	push(@bits, "types=$typemap[$#typemap]") if $typemap[$#typemap] ne '';
+	&win_decor('', join(', ', @bits), &myctime($time, &opt('s')),
+		   $filerow + 2, ($long && $filelen + 5 + 57 <= $scr->{COLS})
+				 ? $filelen + 5 + 57 : '');
+}
+
+sub win_decor {
+	my($a, $b, $c, $r, $w) = @_;
+	($a, $b, $c) = (&view($a), &view($b), &view($c));
+	$w = $w || $scr->{COLS};
+	$scr->at($r, 0)->clreol();
+	if ($a ne '' || $b ne '') {
+		my @b = &truncm($b, $w - length($a) - 1 -
+				    (($c ne '') ? length($c) + 1 : 0));
+		$a  = &colored("$a$b[0]", $co_decor);
+		$a .= $b[1] . &colored($b[2], $co_decor) if $#b > 0;
+		$scr->at($r, 0)->puts($a);
+	}
+	$scr->at($r, $w - length($c) - 1)->puts(colored $c, $co_decor)
+		if $c ne '';
+}
+
+sub win_bag {
+	my $row = 0; my($key, $file, $qfile, $qkey);
+	my @keys = @bagkeys;
+	my $x = $bagrow * ($#bagkeys + 1);
+	my $y = ($bagcol - $filecol) * (4 + $filelen);
+	my @files = @{$lstable[$bagcol - $filecol]}[$x .. $x + $#keys];
+	my @keys2 = @keys; my @files2 = @files;
+
+	&setcdhist('file1', ''); $point = '';
+	&setcdhist('fileptr', $bagkeys[0])
+		unless grep($fileptr eq $_, @bagkeys);
+	map(eval "\$keymap_$_\{'POINT'} = undef", keys %bagmap);
+
+	@usedbagkeys = @bagfiles = ();
+	while (@keys2 && @files2) {
+		last if ($file = shift @files2) eq '';
+		push(@usedbagkeys, $key = shift @keys2);
+		push(@bagfiles, $file) if $_[0];
+		$fileptr = $key if $file eq $pendptr;
+	}
+	&fileptr('+0'); undef $pendptr;
+
+	foreach (@usedbagkeys) {
+		($key, $file) = (shift @keys, shift @files);
+
+		($_[1]) ? $key eq $fileptr &&
+			  $scr->at(2 + $x + $row, $y + 1)
+			      ->puts($_[0] ? '>' : ' ')
+			: $scr->at(2 + $x + $row, $y)
+			      ->puts(($_[0] ? &colored($key, $co_decor) : ' ')
+				   . ($_[0] && $key eq $fileptr ? '>' : ' '));
+		$row++;
+
+		($qfile, $qkey) = (&evalquote($file), &evalquote($key));
+		$qkey =~ s/^'?/$&\\/;
+		my $fill = sub { my @__ = @_;
+			grep { s/<FILE>/$qfile/g; s/<KEY>/$qkey/g; 1 } @__; };
+		foreach (keys %bagmap) {
+			my $act = $bagmap{$_};
+			$act = (! ref $act)	? [&$fill($act), ''] :
+			       (! ref $$act[0]) ? [&$fill(@$act)]    :
+					[map { [&$fill(@$_)] } @$act];
+			eval "\$keymap_$_\{\$key} = " .
+				($_[0] ? '$act' : 'undef');
+			eval "\$keymap_$_\{'POINT'} = \$keymap_$_\{\$key}"
+				if $key eq $fileptr;
+		}
+		$point = $file if $key eq $fileptr && $_[0];
+		&setcdhist('file1', $file) if $file1 eq '';
+	}
+	&setcdhist('file1', $point) if $point ne '';
+
+	foreach $key (@keys) {
+		map(eval "\$keymap_$_\{\$key} = undef", keys %bagmap);
+	}
+}
+
+sub win_choose {
+	my($x, $y);
+	foreach (@_) {
+		($x, $y) = @{$drawn{$_}},
+		    $scr->at($x + 2, $y + 2)
+			->puts(($choose{$_} eq '') ? ' ' :
+			       &colored($choose{$_}, $co_decor)) if $drawn{$_};
+	}
+	&win_time();
+}
+
+sub win_long {
+	my $row = 2;
+	&win_row2() if shift;
+	if ($long =~ /(^\d+$|\$_\b)/) {
+		foreach (@{$lstable[0]}) {
+			$scr->at($row++, $filelen + 4)->clreol()
+			    ->puts(&long($longlen, $_));
+		}
+	} else {
+		foreach (&long($longlen, @{$lstable[0]})) {
+			$scr->at($row++, $filelen + 4)->clreol()->puts($_);
+		}
+	}
+}
+
+sub home {
+	$scr->at($filerow + 3, 0)->clreol();
+	$scr->puts(&scrtruncr($ch_list))->at($filerow + 3, 0) if $debug_ch;
+}
+
+sub msg {
+	&home();
+	$scr->puts(&colored(join(' ', @_), $co_msg));
+}
+
+sub viewfile {
+	my($file, $n) = @_;
+	my $f; my $tag = '';
+	$tag = &tag($file) if &opt('T');
+	$n-- if $tag;
+	$f = &view($file);
+	$f = ($f =~ /\//) ? join('', &truncm($f, $n)) : &trunc($f, $n)
+		if length($f) > $n;
+	((&opt('C') ? &color($file, $f) : $f) . $tag, length($f . $tag));
+}
+
+sub scrtruncr {
+	substr(' ' x $scr->{COLS} . join('', @_),
+	       -($scr->{COLS} - 1), $scr->{COLS});
+}
+
+###############################################################################
+## Screen navigation subroutines ##############################################
+
+sub bag {
+	&win_bag(0); &page('', @_); &win_bag(1); &home();
+}
+
+sub rebag {
+	&win_bag(0); @bagkeys = @_; &page(); &win_bag(1); &home();
+}
+
+sub columns {
+	&filecols(@_); &win();
+}
+
+sub point {
+	return &fileptr() unless @_;
+	&win_bag(0, 1); &fileptr(@_); &win_bag(1, 1); &home();
+}
+
+sub page {
+	my @args = @_; my %col = (); my %row = ();
+	@args = @pendpage unless @args; undef @pendpage;
+	@args = ($args[0], '', $args[1]) if $args[1] =~ /^[[\]{}]/;
+
+	local $_ = shift @args;
+	s/^([-+<>\[\]]?)#/$1$filecols/;
+	s/^([-+<>\[\]]?)\$/$1$pages/;
+	$filecol =
+	    (/^$/)     ? $filecol					 :
+	    (s/^\+//)  ? $filecol  + $_					 :
+	    (s/^\-//)  ? $filecol  - $_					 :
+	    (s/^>//)   ? ($filecol + $_) % $pages			 :
+	    (s/^]//)   ? (($filecol + $_ >= $pages) ? 0 : $filecol + $_) :
+	    (s/^<//)   ? ($filecol - $_) % $pages			 :
+	    (s/^\[//)  ? (($filecol == 0) ? $pages - ($pages % $_ || $_) :
+			  ($filecol - $_ < 0) ? 0 : $filecol - $_)	 :
+	    (/^\d/)    ? $_ - 1						 :
+	    (s/^\\?//) ? (($col{$_}, $row{$_}) = &pageto($_))[0]	 : 0;
+	$filecol = &max(0, &min($filecol, $pages - 1));
+	$filerow = ($filecol + 1 < $pages || $filerows == 0)
+			? $filerows : $#ls % $filerows + 1;
+
+	$_ = shift @args;
+	s/^([-+<>]?)#/$1$filecols/;
+	s/^([-+<>]?)\$/$1$pages/;
+	$bagcol  =
+	    (/^$/)     ? $bagcol				       :
+	    (s/^\+//)  ? $bagcol  + $_				       :
+	    (s/^\-//)  ? $bagcol  - $_				       :
+	    (s/^>//)   ? ($bagcol + $_ - $filecol) %
+			 &min($filecols, $pages - $filecol) + $filecol :
+	    (s/^<//)   ? ($bagcol - $_ - $filecol) %
+			 &min($filecols, $pages - $filecol) + $filecol :
+	    (/^\d/)    ? $filecol + $_ - 1			       :
+	    (s/^\\?//) ? ((exists $col{$_}) ? $col{$_} :
+			  (($col{$_}, $row{$_}) = &pageto($_))[0])     : 0;
+	$bagcol  = &max($filecol, &min($bagcol,
+			&min($filecol + $filecols - 1, $pages - 1)));
+
+	$_ = shift @args;
+	s/^([-+<>]?)\$/$1$filerows/;
+	$bagrows = &ceil((($bagcol < $pages - 1 || $filerows == 0) ?
+			  $filerow : $#ls % $filerows + 1)
+			 / ((@bagkeys) ? ($#bagkeys + 1) : 1));
+	$bagrow  =
+	    (/^$/)     ? $bagrow				  :
+	    (s/^\+//)  ? $bagrow  + $_				  :
+	    (s/^\-//)  ? $bagrow  - $_				  :
+	    (s/^>//)   ? ($bagrow + $_) % $bagrows		  :
+	    (s/^<//)   ? ($bagrow - $_) % $bagrows		  :
+	    (s/^]//)   ? return &page('',
+			     '>' . int(($bagrow + 1) / $bagrows),
+			     ($bagrow + 1) % $bagrows + 1)	  :
+	    (s/^\[//)  ? return &page('',
+			     ($bagrow) ? '<0'    : '<1',
+			     ($bagrow) ? $bagrow : "+$filerows")  :
+	    (/^\d/)    ? $_ - 1					  :
+	    (s/^\\?//) ? ((exists $row{$_}) ? $row{$_} :
+			  (&pageto($_))[1])			  : 0;
+	$bagrow  = &max(0, &min($bagrow, $bagrows - 1));
+}
+
+sub pageto {
+	my $p = -1;
+	foreach (@ls) {
+		$p++;
+		last if $_ ge $_[0];
+	}
+	($filerows ? int($p / $filerows) : 0,
+	 int(($filerows ? $p % $filerows : 0)
+	   / (@bagkeys ? ($#bagkeys + 1) : 1)));
+}
+
+sub filecols {
+	local $_ = shift;
+	$maxfilecols =
+	    (/^$/)    ? $maxfilecols					   :
+	    (s/^\+//) ? (($maxfilecols > 0) ? $maxfilecols + $_ : 0)	   :
+	    (s/^\-//) ? &max(1, (($maxfilecols > 0) ? $maxfilecols
+						    : $havefilecols) - $_) :
+	    (s/^>//)  ? ($maxfilecols + $_) % $havefilecols		   :
+	    (s/^<//)  ? ($maxfilecols - $_) % $havefilecols		   :
+	    (/^\d/)   ? $_						   : 0;
+	$maxfilecols = &max(0, &min($maxfilecols, $havefilecols));
+}
+
+sub fileptr {
+	local $_ = shift;
+	s/^([-+<>]?)\$/$1$#usedbagkeys/;
+	return &cmdeval($$keymap{'POINT'}) if /^$/;
+	my $n = &aindex($fileptr, @bagkeys);
+	$n = 0 if $n < 0;
+	$fileptr =
+	    (s/^\+//)  ? $usedbagkeys[&min($n + $_, $#usedbagkeys)]	:
+	    (s/^\-//)  ? $usedbagkeys[&max(0, $n - $_)]			:
+	    (s/^>//)   ? $usedbagkeys[($n + $_) % ($#usedbagkeys + 1)]	:
+	    (s/^<//)   ? $usedbagkeys[($n - $_) % ($#usedbagkeys + 1)]	:
+	    (s/^\\?//) ? $_						: $_;
+	$fileptr = $usedbagkeys[$#usedbagkeys]
+		if &aindex($fileptr, @usedbagkeys) < 0;
+	&setcdhist('fileptr', $fileptr);
+}
+
+sub longlen {
+	local $_ = shift;
+	$_ = ($minlonglen <= 57) ? 'max' : 'min' if /^t/i;
+	$minlonglen =
+	    (/^$/)    ? $minlonglen		       :
+	    (s/^\+//) ? $minlonglen + $_	       :
+	    (s/^\-//) ? $minlonglen - $_	       :
+	    (/^max/i) ? $scr->{COLS} - $minfilelen - 5 :
+	    (/^min/i) ? 57			       :
+	    (/^\d/)   ? $_			       : 57;
+	$minlonglen = &max(0, $minlonglen);
+}
+
+###############################################################################
+## Color and tag subroutines ##################################################
+
+sub tag {
+	if    (-l $_[0])   { return '@' }	# -l first to force lstat
+	elsif (-f _)	   { return '*' if (lstat(_))[2] & 0111 }
+	elsif (-d _)	   { return '/' }
+	elsif (-S _)	   { return '=' }
+	elsif (-p _)	   { return '|' }
+	elsif (-b _)	   { return '#' }
+	elsif (-c _)	   { return '%' }
+	elsif (! -e $_[0]) { return '?' }
+	'';
+}
+
+sub color {
+	my($file, $f) = @_;
+	$f = $file if $f eq '';
+	&colored($f, &filecolor($file));
+}
+
+sub filecolor {
+	my $file = shift; my $c = '';
+
+	# We sacrifice orphan detection to avoid automounts via symlinks.
+	if    (-l $file)   { $c = 'ln' }  #(-e readlink $file) ? 'ln' : 'or' }
+	elsif (-f _)	   { $c = 'ex' if (lstat(_))[2] & 0111 }
+	elsif (-d _)	   { $c = 'di' }
+	elsif (-S _)	   { $c = 'so' }
+	elsif (-p _)	   { $c = 'pi' }
+	elsif (-b _)	   { $c = 'bd' }
+	elsif (-c _)	   { $c = 'cd' }
+	elsif (! -e $file) { $c = 'mi' }
+	return &num2color($lscolors{$c}) if $c;
+
+	foreach (keys %lscolors) {
+		next unless s/^\*//;
+		return &num2color($lscolors{"*$_"})
+			if substr($file, -length($_)) eq $_;
+	}
+
+	&num2color($lscolors{(-f _) ? 'fi' : 'no'});
+}
+
+sub num2color {
+	join(' ', map { $ansicolor{$_ + 0} } split(/;/, join(';', @_)));
+}
+
+sub lscolors {
+	%lscolors = ();
+	foreach (split(/:/, $ENV{'LS_COLORS'} || $ENV{'LS_COLOURS'})) {
+		next if $_ eq '';
+		my($k, $v) = split(/=/, $_, 2);
+		$lscolors{$k} = $v;
+	}
+	%lscolors;
+}
+
+sub colorperms {
+	my($t, $ur, $uw, $ux, $gr, $gw, $gx, $or, $ow, $ox) = split(//, shift);
+	my($uid, $gid)					    = @_;
+	my($co_u, $co_g, $co_o, $co); $co_u = $co_g = $co_o = $co_perms;
+	my $co_w = ($t eq 'l') ? '' : $co_write;
+	$ur = "$ur$uw";
+
+	$t = &colored($t, $co_ftype) if $co_ftype;
+	if ($> == 0 || $> == $uid) {
+		$co_u = $co_myper if $>;
+		$gw   = &colored($gw, $co)
+			if $co = ($gw eq 'w' && $co_w) ? $co_w : $co_g;
+		$ow   = &colored($ow, $co)
+			if $co = ($ow eq 'w' && $co_w) ? $co_w : $co_o;
+	} elsif (grep($gid == $_, split(/\s+/, $) ))) {
+		$co_g = $co_myper;
+		$gw   = &colored($gw, $co_g) if $co_g;
+		$ow   = &colored($ow, $co)
+			if $co = ($ow eq 'w' && $co_w) ? $co_w : $co_o;
+	} else {
+		$co_o = $co_myper;
+		$gw   = &colored($gw, $co_g) if $co_g;
+		$ow   = &colored($ow, $co_o) if $co_o;
+	}
+	$ur = &colored($ur, $co_u) if $co_u;
+	$gr = &colored($gr, $co_g) if $co_g;
+	$or = &colored($or, $co_o) if $co_o;
+	$ux = &colored($ux, $co)
+		if $co = ($ux =~ /[st]/i && $co_sbits) ? $co_sbits : $co_u;
+	$gx = &colored($gx, $co)
+		if $co = ($gx =~ /[st]/i && $co_sbits) ? $co_sbits : $co_g;
+	$ox = &colored($ox, $co)
+		if $co = ($ox =~ /[st]/i && $co_sbits) ? $co_sbits : $co_o;
+
+	"$t$ur$ux$gr$gw$gx$or$ow$ox";
+}
+
+sub colorkey {
+	local $_ = join('', @_);
+	return &colored($_, $co_ckey) if $co_ckey && /^\^./;
+	return &colored($_, $co_nkey) if $co_nkey && /^\\./;
+	return &colored($_, $co_wkey) if $co_wkey && /^<.*>$/;
+	return &colored($_, $co_0key) if $co_0key && /^\d$/;
+	return &colored($_, $co_Akey) if $co_Akey && /^[A-Z]$/;
+	return &colored($_, $co_akey) if $co_akey && /^[a-z]$/;
+	($co_key) ? &colored($_, $co_key) : $_;
+}
+
+sub colorcmd {
+	local $_ = join('', @_);
+	return &colored($_, $co_desc) if s/^\\//;
+	my $re   = join('|', @tail); my $tail = '';
+	my $com  = (s/(^|\s)(#.*)/$1/) ? $2 : '';
+	eval { $tail = ($re && s/((^|;)\s*)((($re)\s*(;|$)\s*)+)$/$1/)
+		       ? $3 : '' }; &err($@) if $@;
+	$com  = &colored($com,  $co_com)  if $co_com  && $com  ne '';
+	$tail = &colored($tail, $co_tail) if $co_tail && $tail ne '';
+	$_    = &colored($_,    $co_cmd)  if $co_cmd  && $_    ne '';
+	"$_$tail$com";
+}
+
+###############################################################################
+## File selection subroutines #################################################
+
+sub dotypepath {
+	my $todo = &untilde($_[0]);
+	return &dotype($todo) if $todo =~ /^(\/|$)/;
+
+	foreach ('', split(':', $ENV{'CD_PATH'})) {
+		my $file = ((/./) ? &untilde($_) . '/' : '') . $todo;
+		return &dotype($file) if -e $file;
+	}
+	&dotype($todo);
+}
+
+sub dotype {
+	local  $_  = shift;	# ala csh's variable modifiers ($var:m)
+	(local $_r = $_) =~ s/\.([^.]*)$//; local $_e = $1;
+	local($_h, $_t);
+	(/\//) ? (($_h = $_) =~ s/\/([^\/]*)$//, $_t = $1) :
+		 ( $_h = '',			 $_t = $_);
+	local($_q, $_rq, $_eq, $_hq, $_tq) =
+		map { &quote($_) } ($_, $_r, $_e, $_h, $_t);
+
+	my $f   = &absfile($_);
+	@dohist = ($f, grep($_ ne $f, @dohist)) unless -d;
+	my $max = eval $maxdohist;
+	splice(@dohist, $max) if $max >= 0;
+	foreach $test (sort keys %$typemap) {
+		return &cmdeval($$typemap{$test}) if $test && eval $test;
+	}
+	&cmdeval($$typemap{''});
+}
+
+sub choose {
+	&unchoose(@_), &win(), return if $altls == \@choose;
+
+	foreach (@_) {
+		next if $_ eq '';
+		push(@choose, $_);
+		$choose{$_} = &digit($#choose)
+	}
+	&win_choose(@_);
+	&home();
+}
+
+sub unchoose {
+	my $n	  = 0;
+	@unchosen = @_ if @_;
+	%choose	  = ();
+	&win_choose(@choose);
+	map(splice(@choose, $#choose - &aindex($_, reverse @choose), 1), @_);
+	map($choose{$_} = &digit($n++), @choose);
+	&win_choose(@choose);
+	&home();
+}
+
+sub rechoose {
+	&choose(@unchosen);
+	@unchosen = ();
+}
+
+sub choosebyn {
+	my $i = &undigit($_[0]);
+	&home(), return if $i < 0 || $i > $#choose;
+
+	&choose($choose[$i]), return if $altls != \@choose;
+
+	splice(@choose, $i, 1);
+	&choose();
+}
+
+sub grepls { &myeval("grep { $_[0] } \@ls"); }
+sub lsall  { ($altls) ? @ls : grep { ! /^\.\.?$/ } @ls; }
+
+###############################################################################
+## File operation subroutines #################################################
+
+sub untilde {
+	local $_ = $_[0];
+	! /^\~/ || s:^\~(\/|$):$ENV{'HOME'}$1:
+		|| s:^\~([^/]+):(getpwnam($1))[7] || $&:e;
+	$_;
+}
+
+sub absfile {
+	my($f, $d) = @_;
+	return $f if $f =~ /^\//;
+	$d = $cwd if $d eq '';
+	$d . (($d =~ /\/$/) ? '' : '/') . $f;
+}
+
+sub remove {
+	my @bad;
+	foreach (@_) {
+		$! = 0;
+		(-l $_ || ! -d _) ? unlink $_ : rmdir $_;
+		push(@bad, "$_ ($!)") if $! + 0;
+	}
+	&err('Cannot remove', join(', ', @bad)) if @bad;
+}
+
+###############################################################################
+## Change directory subroutines ###############################################
+
+sub cdpath {
+	local $_ = $_[0];
+	$_ = (ref eq 'HASH') ? $$_{'ls'} : (ref eq 'ARRAY') ? $$_[0] : $_;
+	return &cd($_[0]) if /^(\/|$)/;
+
+	my $pre = $err;
+	foreach $dir ('', split(':', $ENV{'CD_PATH'})) {
+		$err = $pre, return $cwd if &cd(((/./) ? "$dir/" : '') . $_);
+	}
+	$err = $pre; &err("Cannot cd $_ in CD_PATH");
+	0;
+}
+
+sub cd {
+	local $_ = $_[0];
+	$_ = (ref eq 'HASH') ? $$_{'ls'} : (ref eq 'ARRAY') ? $$_[0] : $_;
+	return 1 if $_ eq '';
+
+	$_ = &untilde($_);
+	$cwd || chomp($cwd = `pwd`), $_ = &absfile($_) unless /^\//;
+	1 while s:/\.(/|$):/:;
+	1 while s:(^|/[^/]+)/+\.\.(/|$):/:;
+	s:([^/])/+$:$1:;
+
+	&err("Cannot chdir $_ ($!)"), return 0 unless chdir $_;
+
+	map(/^\// || ($choose{$_ = &absfile($_)} = $choose{$_}), @choose);
+	map(/^\// || delete $choose{$_},		    keys %choose);
+	$cwd = $_;
+
+	my %p = (); my $p = \%p; my @new = ();
+	foreach (@cdhist) { ($$_{'ls'} eq $cwd) ? do { $p = $_ unless %$p }
+						: push(@new, $_) }
+	%$p = %{$_[0]}, $$p{'ls'} = $cwd if ref $_[0];
+	@cdhist = (%$p ? $p : {'ls' => $cwd}, @new);
+	my $max = eval $maxcdhist || 1;
+	splice(@cdhist, $max) if $max >= 0;
+	&cdrestore(%$p ? $p : '');
+
+	&cmdeval($onsub{'cd'}) if exists $onsub{'cd'};
+	$cwd;
+}
+
+sub cdrestore {
+	&page(1, 1, 1), &fileptr("-\$"), return unless my $p = shift;
+	@pendpage = (($$p{'file0'} ne '') ? "\\$$p{'file0'}" : 1,
+		     ($$p{'file1'} ne '') ? ("\\$$p{'file1'}",
+					     "\\$$p{'file1'}") : (1, 1));
+	$fileptr  = ($$p{'fileptr'} ne '') ? $$p{'fileptr'} : $bagkeys[0];
+	$pendptr  = $$p{'file1'};
+}
+
+sub setcdhist {
+	my($k, $v) = @_;
+	($k eq 'file0')	  ? do { $file0	  = $v } :
+	($k eq 'file1')	  ? do { $file1	  = $v } :
+	($k eq 'fileptr') ? do { $fileptr = $v } : return;
+	$cdhist[0]{$k} = $v unless $altls;
+	$v;
+}
+
+sub cdhist {
+	my $p;
+	if ($_[0] =~ /^back$/i) {
+		$p = 1;
+	} elsif ($_[0] =~ /^prev$/i) {
+		$p = (++$cdhistp > $#cdhist) ? '' : $cdhistp;
+	} elsif ($_[0] =~ /^start$/i) {
+		$p = &min($cdhistp, $#cdhist);
+		$cdhistp = 0;
+	}
+	&cd($cdhist[$p]{'ls'});
+}
+
+###############################################################################
+## Mark subroutines ###########################################################
+
+sub setmark {
+	my $mark = shift;
+	return 0 if grep($mark eq $_, @_);
+	$mark{$mark} = {%{$cdhist[0]}};
+}
+
+sub getmark    { $mark{$_[0]} }
+sub clearmarks { %mark = ()   }
+
+sub helpmarks {
+	return &pipeto(shift, "No marks are defined.\n") unless %mark;
+	&help(shift,
+	      map { ($_, "$mark{$_}->{ls} @ $mark{$_}->{file1}") } keys %mark);
+}
+
+###############################################################################
+## Listing subroutines ########################################################
+
+sub lsdir {
+	my $dir = (@_) ? $_[0] : '.'; my @ls = ();
+	&err("Cannot opendir $dir ($!)"), return @ls unless opendir DIR, $dir;
+	my @dir = readdir DIR;
+	closedir DIR;
+	while (@dir) {
+		local $_ = shift @dir;
+		next if @_ && /^\.\.?$/;
+		$_ = $_[0] . ((! @_ || $_[0] =~ /\/$/) ? '' : '/') . $_;
+		push(@ls, $_);
+		push(@ls, &lsdir($_)) if $cdhist[0]{'expand'}{$_};
+	}
+	@ls;
+}
+
+sub ls {
+	if ($altls) {
+		@ls = (ref $$altls[0] eq 'HASH')  ? map($$_{'ls'}, @$altls) :
+		      (ref $$altls[0] eq 'ARRAY') ? map($$_[0],    @$altls) :
+						    @$altls;
+		return @ls if grep($altls == $_, \@choose, \@cdhist, \@dohist);
+	} else {
+		@ls = &lsdir();
+	}
+
+	&myeval("\@ls = grep { $where } \@ls") if $where =~ /\S/;
+	@ls = grep(! /(^|\/)\.[^\/]*$/, @ls) if &opt('a');
+	@ls = grep(! /(^|\/)\.\.?$/,    @ls) if &opt('A');
+	if (&opt('B')) {
+		my $bak;
+		foreach $bak (@bak) {
+			eval { @ls = grep(! /$bak/, @ls) };
+			&err($@) if $@;
+		}
+	}
+
+	%sortcache = %sortcache2 = ();
+	@ls = &opt('f')			?		@ls :
+	      &opt('F')			? sort bycolor	@ls :
+	      &opt('X')			? sort byext	@ls :
+	      &opt('m')			? sort bymode	@ls :
+	      &opt('l')			? sort bynlink	@ls :
+	      &opt('o') && ! &opt('N')	? sort byowner	@ls :
+	      &opt('o') &&   &opt('N')	? sort byuid	@ls :
+	      &opt('g') && ! &opt('N')	? sort bygroup	@ls :
+	      &opt('g') &&   &opt('N')	? sort bygid	@ls :
+	      &opt('S')			? sort bysize	@ls :
+	      &opt('t')			? sort bymtime	@ls :
+	      &opt('u')			? sort byatime	@ls :
+	      &opt('c')			? sort byctime	@ls :
+	      &opt('I')			? sort byinode	@ls :
+	      &opt('b')			? sort bydot	@ls :
+	      &opt('D') || &opt('d')	? sort bydir	@ls :
+	      &opt('i')			? sort bynocase	@ls :
+					  sort		@ls;
+	%sortcache = %sortcache2 = ();
+	@ls = reverse @ls if &opt('r');
+	@ls;
+}
+
+sub altls {
+	my $r = shift; my $old = $altls;
+	$altls	 = ($r && $altls != $r) ? $r : undef;
+	$lstitle = ($altls) ? join(' ', @_) : '';
+	&cdrestore(($altls) ? '' : $cdhist[0]) if $altls != $old;
+	&cmdeval($onsub{'altls'}) if exists $onsub{'altls'};
+	$altls;
+}
+
+sub longls {
+	my $win = 0; $win = shift if $_[0] =~ /^-w/;
+	my $old = $long;
+	if ((my $arg = join(' ', @_)) =~ /^[-+\d\s]*$/) {
+		$long = ($arg =~ /^[-+]/) ? $long + $arg : $arg;
+		$long = 0		    if $long < 1;
+		$long = ($long - 1) % 3 + 1 if $long > 3;
+		$longlabel = ('', 'user+mtime',
+				  'group+atime', 'other+ctime')[$long];
+	} else {
+		$long = $arg . (($arg =~ /[\@\$]_/) ? '' : ' @_');
+		$longlabel = "{$long}";
+	}
+	&page($bagcol + 1) if $long;
+	(! $old || ! $long) ? &win() : do { &win_long(1); &home() }
+		if $win && $old ne $long;
+}
+
+sub long {
+	my $len = shift; my @ret = ();
+	if ($long =~ /^\d+$/) {
+		foreach (@_) {
+			last if $_ eq '';
+			push(@ret, &longstr($_, $len));
+		}
+		return @ret;
+	}
+
+	(my $cmd = $long) =~ s/\@_\b/join(' ', &quote(@_))/eg;
+	if ($long =~ /\$_\b/) {
+		foreach (@_) {
+			last if $_ eq '';
+			(my $c = $cmd) =~ s/\$_\b/&quote($_)/eg;
+			push(@ret, &longfix(scalar `$c`, $_, $len));
+		}
+	} else {
+		my @r = `$cmd`;
+		foreach (@_) {
+			last if $_ eq '';
+			push(@ret, &longfix(shift @r, $_, $len));
+		}
+	}
+	@ret;
+}
+
+sub longfix {
+	local $_ = shift; my $label = shift; my $len = shift;
+	chomp;
+	$label =~ s/\W/\\$&/g;
+	s/^$label(:\s*|\s+)//mg;
+	s/\s+$label$//mg;
+	s/\s*$//mg;
+	&trunc(&view(&expandtabs($_)), $len);
+}
+
+sub longstr {
+	$! = 0;
+	my($Dev, $inode, $mode, $nlink, $uid, $gid, $Rdev, $size, 
+	   $atime, $mtime, $ctime) = &opt('L') ? stat shift : lstat shift;
+	return &colored(&trunc($!,	    $_[0]), $co_error) if $! + 0;
+	return &colored(&trunc(readlink $_, $_[0]), $co_symln)
+		if ! &opt('h') && ! &opt('L') && -l _;
+
+	my $perms;
+	if    (-f _)		    { $perms = '-' }
+	elsif (-d _)		    { $perms = 'd' }
+	elsif (! &opt('L') && -l _) { $perms = 'l' }
+	elsif (-S _)		    { $perms = 's' }
+	elsif (-p _)		    { $perms = 'p' }
+	elsif (-b _)		    { $perms = 'b'; $size = '-' }
+	elsif (-c _)		    { $perms = 'c'; $size = '-' }
+	else        		    { $perms = '?' }
+
+	$perms .= join('',
+		  ('---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx')
+		  [($mode & 0700) >> 6, ($mode & 0070) >> 3, $mode & 0007]);
+	substr($perms, 3, 1) =~ tr/-x/Ss/ if -u _;
+	substr($perms, 6, 1) =~ tr/-x/Ss/ if -g _;
+	substr($perms, 9, 1) =~ tr/-x/Tt/ if -k _;
+
+	$nlink = ($nlink > 99 || $nlink < 0) ? '**' : sprintf('%2d', $nlink);
+
+	my $user  = &opt('N') ? $uid : &uid2name($uid);
+	my $group = &opt('N') ? $gid : &gid2name($gid);
+	$user = ('', $user, $group, 'other')[$long];
+
+	$size = &opt("#") ? $inode : $size;
+	$user = &trunc($user, &max(8, 18 - length($size) - 1))
+		if length("$user $size") > 18;
+	$size = sprintf('%.' . (18 - length($user) - 7) . 'e', $size)
+		if length("$user $size") > 18;
+	my $usize = ' ' x 18;
+	substr($usize, 0, length($user)) = $user;
+	substr($usize, -length($size))   = $size if $size ne '';
+
+	my $ftime = ('', $mtime, $atime, $ctime)[$long];
+	my $ctime = &myctime($ftime);
+
+	my $r = "$perms $nlink $usize $ctime";
+	return &trunc($r, $_[0]) if ! &opt('n') || length($r) > $_[0];
+
+	$perms = &colorperms($perms, $uid, $gid);
+	$nlink =~ s/\S+/&colored($&, $co_nlink)/e if $co_nlink;
+
+	my $co = $co_user{$user} ||
+		 $co_user{('', $uid, $gid, '')[$long]} || $co_user{''};
+	substr($usize, 0, length($user)) = &colored($user, $co) if $co;
+
+	if ($size =~ /^\d+$/ && ($co_size1 || $co_size2)) {
+		my $n = 0; my @size = ();
+		unshift(@size, &colored($&, (++$n % 2) ? $co_size1
+						       : $co_size2))
+			while $size =~ s/.?.?.$//;
+		$usize =~ s/\d+$/join('', @size)/e;
+	}
+
+	$ctime = &colored($ctime, (time - $ftime > &txt2secs($aged))
+				  ? $co_aged : $co_xaged);
+
+	"$perms $nlink $usize $ctime";
+}
+
+sub txt2secs {
+	local $_ = shift;
+	return $_ * 31557600 if /\bye?a?r?s?\s*$/i;
+	return $_ *  2629800 if /\bmon?t?h?s?\s*$/i;
+	return $_ *   604800 if /\bwe?e?k?s?\s*$/i;
+	return $_ *    86400 if /\bda?y?s?\s*$/i;
+	return $_ *       60 if /\bmi?n?u?t?e?s?\s*$/i;
+	return $_ *        1 if /\bse?c?o?n?d?s?\s*$/i;
+	return $_ *     3600 if /\bh?o?u?r?s?\s*$/i;
+}
+
+###############################################################################
+## Options subroutines ########################################################
+
+sub initopts {
+	%opts = ();
+}
+
+sub setopt {
+	my($opt, $val) = @_;		# set opt to bool val, toggle if no val
+	return(($val || ! exists $opts{$opt})
+	       ? do { $opts{$opt} = 1 } : do { delete $opts{$opt}; 1 })
+			if length($opt) == 1 && index($optkeys, $opt) >= 0;
+	0;				# return whether valid opt
+}
+
+sub opt {
+	my $opt = shift;
+	return 0 unless length($opt) == 1 && index($optkeys, $opt) >= 0;
+	index($optons, $opt) >= 0 xor $opts{$opt};
+}
+
+###############################################################################
+## Sorting subroutines ########################################################
+
+sub byext {
+	my($aext, $bext);
+	$aext = '' unless ($aext = $a) =~ s/..*\.//;
+	$bext = '' unless ($bext = $b) =~ s/..*\.//;
+	$aext cmp $bext || &byname();
+}
+
+sub bycolor { &colorval($a)    cmp &colorval($b)    || &byname() }
+sub byinode { &statval($a,  1) <=> &statval($b,  1) || &byname() }
+sub bymode  { &statval($b,  2) <=> &statval($a,  2) || &byname() }
+sub bynlink { &statval($b,  3) <=> &statval($a,  3) || &byname() }
+sub byuid   { &statval($a,  4) <=> &statval($b,  4) || &byname() }
+sub bygid   { &statval($a,  5) <=> &statval($b,  5) || &byname() }
+sub bysize  { &statval($b,  7) <=> &statval($a,  7) || &byname() }
+sub byatime { &statval($b,  8) <=> &statval($a,  8) || &byname() }
+sub bymtime { &statval($b,  9) <=> &statval($a,  9) || &byname() }
+sub byctime { &statval($b, 10) <=> &statval($a, 10) || &byname() }
+
+sub byowner { &uid2name(&statval($a, 4)) cmp &uid2name(&statval($b, 4)) ||
+	      &byname() }
+sub bygroup { &gid2name(&statval($a, 5)) cmp &gid2name(&statval($b, 5)) ||
+	      &byname() }
+
+sub byname  { &opt('b')		     ? &bydot() :
+	      &opt('D') || &opt('d') ? &bydir() : &byascii() }
+
+sub bydot {
+	my $adot = $a =~ /^\./; my $bdot = $b =~ /^\./;
+	! ($adot xor $bdot) ? (&opt('D') || &opt('d') ? &bydir() : &byascii())
+			    : ($adot)		      ? 1	 : -1;
+}
+
+sub bydir {
+	my $adir = &statval($a, 2, \%sortcache2) & 040000;
+	my $bdir = &statval($b, 2, \%sortcache2) & 040000;
+	! ($adir xor $bdir) ? &byascii() :
+			      &opt('D') ? (($adir) ? -1 :  1)
+					:  ($adir) ?  1 : -1;
+}
+
+sub byascii { &opt('i') ? &bynocase() : $a cmp $b }
+
+sub bynocase {
+	(my $A = $a) =~ tr/A-Z/a-z/;
+	(my $B = $b) =~ tr/A-Z/a-z/;
+	$A cmp $B || $a cmp $b;
+}
+
+sub colorval {
+	my $f = shift;
+	(exists $sortcache{$f}) ? $sortcache{$f} :
+		($sortcache{$f} = &filecolor($f));
+}
+
+sub statval {
+	my($f, $n) = (shift, shift);
+	my($cache) = (@_) ? shift : \%sortcache;
+	(exists $$cache{$f}) ? $$cache{$f} :
+		($$cache{$f} = (&opt('L') ? stat $f : lstat $f)[$n]);
+}
+
+###############################################################################
+## Directory expansion subroutines ############################################
+
+sub expand {
+	return unless $depth;
+	my $act = shift;	# expand || collapse || toggle
+	$act = ($act =~ /^e/i) ? 1 : ($act =~ /^c/i) ? -1 : 0;
+	foreach (@_) {
+		my $def = exists $cdhist[0]{'expand'}{$_} unless $act;
+		map($cdhist[0]{'expand'}{$_} = 1, &subdirs($_, $depth)), next
+			if ($act > 0 || ! $act && ! $def) && -d $_;
+		map(delete $cdhist[0]{'expand'}{$_}, &expdirs($_, $depth))
+			if  $act < 0 || ! $act &&   $def;
+	}
+}
+
+sub subdirs {		# depth < 0 means no limit
+	my $dir = shift; my $dep = shift; my @ret = ();
+	return @ret if $dep == 0; # || ! -d $dir;
+	push(@ret, $dir);
+	return @ret if $dep == 1 || ! opendir SUB, $dir;
+	my @ls = readdir SUB;
+	closedir SUB;
+	while (@ls) {
+		local $_ = shift @ls;
+		next if /^\.\.?$/;
+		$_ = $dir . (($dir =~ /\/$/) ? '' : '/') . $_;
+		next if -l && ! &opt('L') || ! -d;
+		push(@ret, &subdirs($_, $dep - 1));
+	}
+	@ret;
+}
+
+sub expdirs {
+	my $dir = quotemeta shift; my $dep = shift;
+	return () if $dep == 0;
+	my $patt = "^$dir" . (($dep < 0) ? '(\/|$)' :
+			      '(\/+[^\/]+){0,' . ($dep - 1) . '}\/*$');
+	grep { /$patt/ } keys %{$cdhist[0]{'expand'}};
+}
+
+###############################################################################
+## Help and prompt subroutines ################################################
+
+sub help {	# -u* = list unused keys, -U* = list unused key ranges
+	my $unused = 0; $unused = shift if $_[0] =~ /^-u/i;
+	my $pager  = shift; my $tab = 8;
+	my($key, $val, @kmap, @tmap); my %list = (); my @list = ();
+
+	eval "\@kmap = \%keymap_$keymap[$#keymap]";
+	eval "\@tmap = \%typemap_$typemap[$#typemap]";
+	push(@_, @kmap) unless @_;
+	while (@_) {
+		$key = shift;
+		unshift(@_, @kmap),	       next if $key eq '%keymap';
+		unshift(@_, @tmap), $tab = 24, next if $key eq '%typemap';
+		$val = shift;
+		$list{$key} = $val unless exists $list{$key};
+	}
+
+	foreach (sort bynulllast keys %list) {
+		push(@list, &helpstr($_, '', $tab, $list{$_})) }
+
+	if ($unused) {
+		my @seq = grep(! exists $list{pack('c', $_)}, 001 .. 0177);
+		@seq = &seqshort(@seq) if $unused =~ /^-U/;
+		foreach (@seq) {
+			$_ = &viewas(pack('c', $_)), next unless ref;
+			$_ = &viewas(pack('c', $$_[0])) . '-' .
+			     &viewas(pack('c', $$_[1]));
+		}
+		push(@list, &colored('UNUSED  ' . join(' ', @seq), $co_xuse));
+	}
+
+	&pipeto($pager, @list);
+}
+
+sub bynulllast { ($b eq '') ? -1 : ($a eq '') ? 1 : $a cmp $b }
+
+sub helpstr {
+	my($key, $prk, $tab, $cmd) = @_; my($v1, $v2) = (0, 0);
+	return () if $cmd eq '';
+
+	$cmd = (! ref $cmd) ? $cmd : (! ref $$cmd[0])
+	       ? (($$cmd[1] ne '' && ! &opt('p'))
+		  ? "\\" . eval("qq^$$cmd[1]^") : $$cmd[0])
+	       : return map(&helpstr($key, substr($$_[2], 0, 1), $tab, $_),
+			    &cmds($cmd));
+
+	$key = (length($key) == 1) ? &colorkey($v1 = &viewas($key)) :
+			&colored($v1 = &view($key), $co_code);
+	$prk = (length($prk) == 0) ? ''				    :
+	       (length($prk) == 1) ? &colorkey($v2 = &viewas($prk)) :
+			&colored($v2 = &view($prk), $co_code);
+	$key = $key . (($prk ne '') ? " $prk" : '');
+
+	$v1  = length($v1) + (($prk ne '') ? 1 + length($v2) : 0);
+	$v1  = ($v1 >= $tab) ? "\n" . ' ' x $tab : ' ' x ($tab - $v1);
+
+	($key . $v1 . &colorcmd(&view($cmd)) . "\n");
+}
+
+sub cmdprompt {
+	my($get, $cmd) = @_; my @p = (); my($v, $c, $n);
+	foreach (&cmds($cmd)) {
+		$n++;
+		push(@p, &colorkey($v = &viewas(substr($$_[2], 0, 1))),
+			 ' ' x (8 - length($v)),
+			 ($$_[3] ne '') ?
+				&colored(&view(eval("qq^$$_[3]^")), $co_prmt) :
+			 ($$_[1] ne '' && ! &opt('p')) ?
+				&colored(&view(eval("qq^$$_[1]^")), $co_desc) :
+				&colorcmd(&view($$_[0])), "\n");
+	}
+	&home(); &echo(@p);
+	$c   = &getkey($get);
+	($filerow + 3 + $n + 1 > $scr->{ROWS}) ?
+		&winch() : do { &home(); $scr->clreos() };
+	$cmd = ($c eq '') ? '' : (grep { index($$_[2], $c) >= $[ } @$cmd)[0];
+	$c ne "\r" && &beep(), return '' unless ref $cmd;
+	$$cmd[0];
+}
+
+sub cmds {	# limited to 26 default keys (a-z), not guaranteed unique
+	my $a = 'a';
+	foreach $cmd (@{$_[0]}) {
+		next if $$cmd[2] ne '';
+		$$cmd[2] = $a++;
+		last if length($a) > 1;
+	}
+	@{$_[0]};
+}
+
+###############################################################################
+## Operation subroutines ######################################################
+
+sub get      { &getstr($rl,	  @_) }
+sub getshell { &getstr($rl_shell, @_) }
+sub getjunk  { &getstr($rl_junk,  @_) }
+
+sub getfile  {
+	local $_ = &getstr($rl_file, @_);
+	s/ $// unless s/\\ $/ /;	# clear space from filename completion
+	$_;
+}
+
+sub gets {
+	my $s = &get(@_);
+	($filerow + 4 >= $scr->{ROWS}) ? &winch() : &home(), die "\n"
+		if $s eq '';
+	$s;
+}
+
+sub getcmd {
+	my $cmd = join(' ', @_);
+	my $arg = &get($cmd);
+	($filerow + 4 >= $scr->{ROWS}) ? &winch() : &home(), die "\n"
+		if $arg =~ /^\s+$/;
+	$cmd . (($arg eq '') ? '' : ' ') . $arg;
+}
+
+sub getoutput {
+	my @r; my $s = &getshell(@_);
+	return &myeval($s) if $s =~ s/^[;:]//;
+	chomp(@r = `$s`);
+	@r;
+}
+
+sub ask {
+	&home(), die "\n" if index("Yy$ch", &getkey(@_)) < 0;
+	&home();
+}
+
+sub shellp {	# run a command with perl if initial ";" else shell
+	my $n = ($_[0] eq '-noecho') ? 1 : 0;
+	return &perl(@_) if $_[$n] =~ s/^[;:]//;
+	&shell(@_);
+}
+
+sub shellv {
+	my $prompt = shift; my @r = ();
+	my $cmd    = &getshell($prompt);
+	while ($cmd !~ /^\s*([vV]|exit|lo(gout)?)\s*$/) {
+		@r   = &shellp('-noecho', $cmd);
+		$cmd = &getshell($prompt);
+	}
+	@r;
+}
+
+sub evalnext {
+	my $a = shift;
+	&cmdeval($$a[0]);
+	push(@$a, shift @$a);
+}
+
+sub clear {
+	($altls == \@cdhist)		 ? splice(@cdhist, 1) :
+	($altls == \@choose || ! $altls) ? &unchoose(@choose) :
+					   do { @$altls = () };
+}
+
+sub ret {
+	my $prompt = join(' ', @_);
+	return &getjunk($prompt) =~ /^\s*y/i if $prompt;
+	my $cmd = &getshell('Press Return');
+	($cmd) ? &shellp($cmd) : 0;
+}
+
+sub err {
+	chomp(my $e = join(' ', @_));
+	$err .= (($err ne '' && $e ne '') ? '; ' : '') . &view($e);
+}
+
+sub beep {
+	print "\a";
+}
+
+###############################################################################
+## System interface subroutines ###############################################
+
+sub sigs_off  { @SIG{qw/INT WINCH TSTP/} = qw/DEFAULT DEFAULT tstp/ }
+sub sigs_on   { @SIG{qw/INT WINCH TSTP/} = qw/IGNORE  winch   stop/ }
+sub winch_off { $SIG{'WINCH'} = 'DEFAULT' }
+sub winch_on  { $SIG{'WINCH'} = \&winch   }
+
+sub bakescr {
+	(($_[0] =~ /./) ? $_[0] : $cooked)
+		? eval { system('stty -raw echo') }
+		: eval { system('stty raw -echo') };
+}
+
+sub winch {
+	my $path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
+	$scr->resize();
+	$ENV{'PATH'} = $path;	# to get /usr/ucb/stty on Solaris
+	&cmdeval($onsub{'winch'}) if exists $onsub{'winch'};
+	&win(($_[0] == 1) ? () : ("\\$file0", "\\$file1", "\\$file1"));
+}
+
+sub getkey {
+	$scr->puts(join(' ', map(&colored($_, $co_decor), @_)) . '  ')
+	    ->clreol() if @_;
+	my $ch = $scr->getch();
+	$scr->flush_input();	# partly broken in Term::Screen 1.00 *shrug*
+	$ch . '';
+}
+
+sub getstr {
+	my $rl = shift; my $str;
+	&bakescr($cooked = 1);
+	&winch_off();		# Gnu readline sometimes signals WINCH
+	$str = $rl->readline((@_) ? join(' ', map(&colored($_, $co_decor),
+						  @_)) . '  ' : '');
+	&winch_on();
+	&bakescr($cooked = 0);
+	$rl->addhistory($str) if $str =~ /\S/;
+	$str . '';
+}
+
+sub sh {
+	my $no = ($_[0] eq '-noecho') ? shift : 0;
+	$scr->puts(join(' ', map(&colored(&view($_), $co_decor), @_)))
+	    ->clreol() unless $no;
+	&bakescr($cooked = 1);
+	print "\n" unless $no;
+	&sigs_off();
+	my @r = eval { system(@_) };
+	&sigs_on();
+	&bakescr($cooked = 0);
+	@r;
+}
+
+sub shell {
+	my $no  = ($_[0] eq '-noecho') ? shift : 0;
+	my $cmd = join(' ', @_);
+	my $pre = $err;
+	1 while $cmd =~ s/\{\{(.*?)\}\}/join(' ', &myeval($1))/e;
+	return if $pre ne $err;
+	$scr->puts(colored &view($cmd), $co_decor)->clreol() unless $no;
+	&bakescr($cooked = 1);
+	print "\n" unless $no;
+	&sigs_off();
+	my @r = eval { system($shell || $ENV{'SHELL'} ||
+			      '/bin/sh', '-c', $cmd) };
+	&sigs_on();
+	&bakescr($cooked = 0);
+	@r;
+}
+
+sub perl {
+	my $no = ($_[0] eq '-noecho') ? shift : 0;
+	$scr->puts(colored &view(join(' ', @_)), $co_decor)->clreol() if ! $no;
+	&bakescr($cooked = 1);
+	print "\n" if ! $no;
+	&sigs_off();
+	my @r = &myeval(@_);
+	&sigs_on();
+	&bakescr($cooked = 0);
+	@r;
+}
+
+sub echo {
+	&bakescr($cooked = 1);
+	print @_;
+	&bakescr($cooked = 0);
+}
+
+sub pipeto {
+	my $prog = shift;
+	$prog = ($prog) ? "| $prog" : '> -';
+	&bakescr($cooked = 1);
+	&sigs_off() if $prog;
+	open(PIPE, $prog) ? do { print PIPE @_; close PIPE }
+			  : &err("Cannot open '$prog' ($!)");
+	&sigs_on() if $prog;
+	&bakescr($cooked = 0);
+}
+
+sub tstp { &stop('tstp') }
+
+sub stop {
+	&wtmpcwd();
+	&bakescr(1) unless $_[0] eq 'tstp';
+	kill 'STOP', $$;
+	&bakescr()  unless $_[0] eq 'tstp';
+	my $nwd;
+	($nwd = &rtmpcwd()) ne $cwd && &cd($nwd), unlink $tmpcwd if -e $tmpcwd;
+	do $tmpenv, $@ && &err($@),		  unlink $tmpenv if -e $tmpenv;
+}
+
+sub quit {
+	&onquit() if defined &onquit;
+	&wtmpcwd();
+	&bakescr(1);
+	undef $scr;
+	undef $rl;
+	exit;
+}
+
+###############################################################################
+## Master shell interface subroutines #########################################
+
+sub rtmpcwd {
+	my $r = '';
+	open(TMPCWD, "< $tmpcwd") or &err("Cannot read $tmpcwd ($!)");
+	chomp($r = <TMPCWD>);
+	close TMPCWD;
+	$r;
+}
+
+sub wtmpcwd {
+	my $u = umask;
+	umask 077;
+	open(TMPCWD, "> $tmpcwd") or &err("Cannot write $tmpcwd ($!)");
+	print TMPCWD $cwd, "\n";
+	umask $u;
+	close TMPCWD;
+}
+
+###############################################################################
+## Wrapper subroutines ########################################################
+
+sub myeval {
+	my @r = eval join(' ', @_);
+	&err($@) if $@;
+	@r;
+}
+
+sub myctime {		# Internet (Swatch) Time
+	(($_[1]) ? sprintf("@%03d ", int(($_[0] + 3600) % 86400 / 86.4)) : '')
+	. localtime($_[0]);
+}
+
+sub xshell {
+	&err('DISPLAY not defined'), return unless $ENV{'DISPLAY'};
+	&shell(@_, '&');
+}
+
+sub uid2name {
+	my($uid) = @_;
+	(exists $users{$uid})  ? $users{$uid}
+			       : ($users{$uid}  = (getpwuid($uid))[0] || $uid);
+}
+
+sub gid2name {
+	my($gid) = @_;
+	(exists $groups{$gid}) ? $groups{$gid}
+			       : ($groups{$gid} = (getgrgid($gid))[0] || $gid);
+}
+
+###############################################################################
+## Text subroutines ###########################################################
+
+sub trunc {
+	my($s, $n) = @_;
+	return $s if length($s) <= $n;
+	substr($s, 0, $n - 1) . '\\';
+}
+
+sub truncm {
+	my($s, $n) = @_;
+	return $s if length($s) <= $n;
+	$n -= 3;
+	return '' if $n < 0;
+	my $p = &ceil($n / 2);
+	(substr($s, 0, $p), '...', substr($s, -($n - $p), $n - $p));
+}
+
+sub quote {
+	my @r = @_;
+	grep { s/[^-\w\.]/\\$&/g } @r;
+	$#r ? @r : shift @r;
+}
+
+sub evalquote {
+	local $_ = join('', @_);
+	s/['\\]/\\$&/g;
+	"'$_'";
+}
+
+sub expandtabs {
+	my $s = join('', @_);
+	while ((my $t = index($s, "\t")) >= $[) {
+		substr($s, $t, 1) = ' ' x (8 - $t % 8);
+	}
+	$s;
+}
+
+sub view {
+        local $_ = join('', @_);
+        s/\n/\\n/g;
+        s/[\000-\007\013\016-\037\177-\237]/sprintf('\\%03o', ord($&))/eg;
+        s/\010/\\b/g;	s/\f/\\f/g;
+        s/\r/\\r/g;	s/\t/\\t/g;
+        $_;
+}
+
+sub viewas {
+        local $_ = join('', @_);
+        s/\n/^J/g;
+        s/[\000-\037]/'^' . pack('c', ord($&) + 64)/eg;
+	s/ /<sp>/g;
+	s/\177/<del>/g;
+        s/[\200-\237]/sprintf('\\%03o', ord($&))/eg;
+	s/\240/<nbsp>/g;
+        $_;
+}
+
+###############################################################################
+## General subroutines ########################################################
+
+sub min { ($_[0] <= $_[1]) ? $_[0] : $_[1] }
+sub max { ($_[0] >= $_[1]) ? $_[0] : $_[1] }
+
+sub ceil {
+	my $n = int $_[0];
+	($_[0] - $n == 0) ? $n : ++$n;
+}
+
+sub digit {
+	($_[0] > 60) ? '*' : (1 .. 9, 'a' .. 'z', 'A' .. 'Z')[$_[0]];
+}
+
+sub undigit {
+	&aindex($_[0], (1 .. 9, 'a' .. 'z', 'A' .. 'Z'));
+}
+
+sub aindex {
+	my($s, $n) = (shift, $[);
+	foreach (@_) {
+		last if $_ eq $s;
+		$n++;
+	}
+	($n > $#_) ? -1 : $n;
+}
+
+sub seqshort {
+	my @seq = @_; my @keep = ();
+	while (@seq) {
+		my($x, $l) = (0, 0);
+		while ($l + 1 <= $#seq) {
+			$l--, last if $seq[++$l] != $seq[$x] + 1;
+			$x = $l;
+		}
+		push(@keep, ($l < 2) ? @seq[0..$l] : [$seq[0], $seq[$l]]);
+		@seq = @seq[$l+1..$#seq];
+	}
+	@keep;
+}

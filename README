@@ -1,0 +1,288 @@
+>>>>>>>>>>>>>>>>>>>>>>>>         VSHNU          <<<<<<<<<<<<<<<<<<<<<<<<
+>>>>>>>>>>>>>>>>>>>>>>>>  The New Visual Shell  <<<<<<<<<<<<<<<<<<<<<<<<
+
+   Home Page:    http://www.cs.indiana.edu/~kinzler/vshnu
+   Screenshots:  http://www.cs.indiana.edu/~kinzler/vshnu/shots.html
+
+-----------------------------  MOTIVATION  -----------------------------
+
+Skilled Unix users know the importance of the shell or command line
+interface (CLI).  (Old-time Unix users didn't even have a choice
+about it).  While having more of a learning curve than a graphical user
+interface (GUI), it permits powerful, creative, complex operations to be
+specified quickly and reliably.  For anyone but the superficial user,
+learning a CLI is an investment that pays off rewardingly.  Command
+line environments are still readily usable over low-bandwidth network
+connections and restricted displays.  Neal Stephenson explains the history
+and values of computer interfaces exceedingly well in "In the Beginning
+was the Command Line" <http://www.cryptonomicon.com/beginning.html>.
+
+However, when one is concerned about file manipulation and management
+(which is a very good thing to be concerned about as the basis of your
+interface, as most GUIs would rather lead you to forget), a CLI can be a
+frustratingly terse interface to the filesystem.  Too many tedious `ls`
+and `cd` commands are needed to keep watch on what's there.  A GUI file
+manager can address this problem, but then you're in mouseland and have
+lost the advantages of the CLI.
+
+Enter the visual shells.  Not a new idea, visual shells can operate within
+an entire terminal or console screen.  File listings are displayed for
+your constant reference.  Common commands and operations can typically be
+performed in fewer keystrokes in a visual interface.  As the `vi` visual
+editor evolved from the `ed` and `ex` command line editors, visual shells
+have attempted to evolve from command line shells.  Some visual shells
+have promoted themselves as simpler menu-oriented interfaces suitable
+for novices, while others emphasize more expert functionality.
+
+Nonetheless, visual shells have never really caught on, except some in
+certain circles such as Emacs' "dired" mode and the Midnight Commander
+program.  I believe this is because they have been designed as largely
+self-contained applications with limited configurability.  Using a visual
+shell has required a significant jump into a new base interface tool,
+and few are so compelling to make that worthwhile.
+
+Hence the design of `vshnu`, the New Visual Shell.  In the Unix
+tradition, it works with things already there and fills a empty niche.
+When incorporating it into your Unix environment, you keep your command
+line shell, your editor, your pager, and access to all your tools, tricks
+and know-how.  Vshnu can operate as an optional supplemental visual mode
+to your command line shell.  You switch between command line and visual
+mode easily as you wish.  Your interface bandwidth and power for Unix
+operations is on a higher plane and life gets sweeter :-).  In addition,
+being written in Perl, it ports to any Unix system without compilation,
+gives you the advantages of a Perl interpreter running readily at
+hand, and permits visual command customizability limited only by your
+creativity, yet doesn't require knowledge of Perl for normal usage.
+Vshnu is a tool that's worthwhile even if only used occasionally as an
+interactive, pageable, color `ls`, yet still pays back, with interest,
+whatever more you put into using it.
+
+------------------------  ADDITIONAL FEATURES  -------------------------
+
+* Extensive options for sorting and listing a directory's files
+* Multiple methods for navigating directories and selecting files
+* Directory locations may be marked for quick returns
+* Lists command outputs alongside files, including a builtin `ls -l`
+* Directory and file histories
+* In color terminals, uses color for more informative displays, including
+  file coloring by type via the standard LS_COLORS environment variable
+* Expands and collapses chosen subdirectories
+* Option to display Internet (Swatch) time
+
+o Multiple methods for choosing and operating on individual or arbitrary
+  sets of files
+o Key commands and file actions are 100% configurable, extensible and
+  arbitrarily complex, including multiple choice options
+o File actions are customizable by file name/type/contents/etc, with
+  common actions configured by default
+o Online help descriptions of key commands and file actions, by mode
+  and by command
+o Separate per-site and per-user configurability
+
+* Adjustable file column displays
+* Adapts to changing screen sizes (but works best on screens 80 characters
+  wide or more)
+* Current directory and environment is propogated between vshnu and
+  the parent command line shell
+* Multiple interfaces for shell commands and Perl statements
+* Perl statements may be {{embedded}} within shell commands
+* A Perl "where" clause to subset the displayed files
+
+o Can use the CD_PATH environment variable as a search path for files
+  and directories
+o Recognizes the following standard environment variables: DISPLAY,
+  EDITOR, HOME, HOST, LS_COLORS, MAIL, PAGER, PATH, SHELL and VISUAL
+
+------------------------------  HISTORY  -------------------------------
+
+Vshnu was inspired by and initially patterned after the program `vsh`,
+the Visual Shell <http://www.cs.indiana.edu/~kinzler/vshnu/vsh.txt>.
+Vsh was written in the early 1980's and is pretty much obsolete bit
+rot now.  After failing to be included in a BSD distribution, it faded
+into obscurity. A SunOS port hasn't compiled since the pre-Solaris days,
+and an attempted Linux port is still horrendously buggy. But, it started
+with some right ideas. I used vsh almost my entire Unix career before
+finally writing vshnu to replace, extend and modernize it.
+
+The "nu" in "vshnu" implies "new", of course, as well as invokes the
+Hindu god Vishnu, the preserver of the universe and restorer of dharma
+(moral order).  Hmmm, how appropriate.
+
+----------------------------  INSTALLATION  ----------------------------
+
+1)  PREREQUISITES
+
+    You need Perl 5.002 or greater with the Term::Screen and
+    Term::ANSIColor modules -- all available at <http://www.cpan.org>.
+    Term::Screen and Term::ANSIColor module files are also included
+    here in the libperl/Term directory.  If you wish to install these,
+    just add a ".pm" extension to the filenames and copy them into a
+    directory in your Perl's @INC or into $HOME/lib/Term, $HOME/libp/Term,
+    $HOME/lib/perl/Term or $HOME/libp/perl/Term.
+
+2)  OPTIONAL
+
+    The Term::ReadLine::Gnu, or at least the Term::ReadLine::Perl,
+    module is recommended to provide line editing, history and filename
+    completion within vshnu <http://www.cpan.org>.
+
+    If available, vshnu can make good use of color in a terminal or
+    console with ANSI color support, and this is highly recommended.  For
+    X Windows, the latest versions of `xterm` have proper color support
+    <http://www.clark.net/pub/dickey/xterm/>.  Make sure your termcap
+    information is properly defined for your color terminal.  You'll then
+    also want the GNU fileutils software <ftp://alpha.gnu.org/gnu/fetish/>
+    which includes the `dircolors` tool for setting your LS_COLORS
+    environment variable.  This variable is referenced by GNU `ls` and
+    vshnu to determine how files should be colored by type and name.
+    As an example, the file color specification file I use is available
+    at <http://www.cs.indiana.edu/~kinzler/home.html#etc/colorrc-ansi>.
+
+3)  INSTALLATION
+
+    Vshnu may be installed either as a regular Perl module or manually
+    in any desired locations, including your home directory.
+
+    A)  AS A PERL MODULE
+
+	The usual routine
+
+		perl Makefile.PL
+		make install clean
+
+	should properly install the "vshnu" file in your Perl scripts
+	directory and the "vshnucfg.pl" file in your Perl library
+	directory.
+
+    B)  MANUALLY
+
+	You can edit the first line of the "vshnu" script here to contain
+	the proper path to your perl executable, then copy it into any
+	directory in your PATH.  Make sure the copy's made executable.
+
+	Then the "vshnucfg.pl" file can be copied where you wish.  If it's
+	not installed as $HOME/.vshnucfg or as vshnucfg.pl somewhere in
+	your Perl's @INC or in $HOME/lib, $HOME/libp, $HOME/lib/perl or
+	$HOME/libp/perl, then you'll have to set the VSHNUCFG environment
+	variable to its location, or edit the installed "vshnu" script
+	near the top to set $default_vshnucfg.
+
+4)  SHELL INTEGRATION
+
+    Optionally, your regular shell environment can be enhanced to interact
+    with vshnu as a sort of supplemental visual mode, communicating
+    any environment changes to vshnu and directory changes between the
+    two shells.
+
+    See the subdirectory here for your command line shell for further
+    direction.  Currently, only `tcsh` is available.  Contributions of
+    other shell integrations are very welcome (a `bash` port should be
+    fairly easy using $PROMPT_COMMAND like tcsh's precmd alias).
+
+5)  PERSONAL CONFIGURATION
+
+    The installation procedure described above installs the main vshnu
+    "engine" script and the supplied required configuration file.
+    An entirely new configuration file could be written and substituted
+    for the supplied one for a vshnu with a very different key command
+    structure and operation (modeless perhaps).
+
+    Usually, though, you'll just want to add on some personal extras
+    or tweak a few things in the supplied configuration.  This can be
+    done with a "vshnurc" Perl file.  It's loaded after the "vshnucfg"
+    Perl file (installed above) and so can modify or supplement the
+    effects of anything in it.  Both of these files are just Perl
+    code that define operating structures for vshnu's environment.
+    The location of the vshnurc file is assumed to be $HOME/.vshnurc (or
+    vshnurc.pl in Perl's @INC or in $HOME/lib, $HOME/libp, $HOME/lib/perl
+    or $HOME/libp/perl) unless the VSHNURC environment variable is set
+    (or the $default_vshnurc variable is set in the vshnucfg file).
+    My personal vshnurc file is included here as "vshnurc.pl" as an
+    example to start your own.  Some familiarity with Perl will probably
+    be required to do any significant work within these files.
+
+-------------------------------  USAGE  --------------------------------
+
+This is the minimum you'll want to know to make some good use of vshunu
+with the supplied configuration:
+
+    Upon starting vshnu, you should see a listing of the files in your
+    current directory.  You can enter a subdirectory by typing the letter
+    that labels it.  Typing the label letter of a file will load that file
+    into your editor.  You can go up to the parent directory with <Return>
+    or back to the previous directory with '\'.  <Tab> and <Backspace>
+    (or <Delete>) will slide the labels (aka the "bag") around to the
+    other files on the screen.  <Space> will page to the next screenful of
+    files in the current directory.  Typing 'L' repeatedly will display
+    the long listings of the files in the bag's column (<Control-L> will
+    clear the long listings).  ':' will let you run a shell command.
+    'V' will suspend vshnu, dropping you back into the invoking shell.
+    <Control-Q>q will exit vshnu.
+
+Of course, there's much, much more possible.  Type '%' within each mode
+of vshnu to see all the key commands available and what they'll do.
+Type '&' to see what file actions will be performed upon selecting files
+in the current file action mode.  Type <Control-N> following by a key
+to see what would happen with that key command.
+
+Here's a summary of the modes in the supplied configuration, with the
+keys to enter and exit each mode:
+
+MODE	KEY	KEY COMMAND MODES
+~~~~	~~~	~~~~~~~~~~~~~~~~~
+main		The starting mode and most commonly used.
+choose	/	Selected files are added to the set of chosen files.
+		Main mode commands are available here, too, though a few
+		change meaning.  Additional key commands are available
+		that operate on the chosen file set.
+opts	O	Sets and unsets various options for sorting and listing
+		the display.  Type '%' in opts mode for a complete
+		options list.  This mode exits automatically after an
+		option key is selected.
+
+
+MODE	KEY	FILE ACTION MODES
+~~~~	~~~	~~~~~~~~~~~~~~~~~
+edit		The starting mode where files are editted and directories
+		are entered.
+do	?	Special action is taken depending on the nature of the
+		file selected, eg, GIF files are viewed, archive files
+		have their contents listed, etc.
+expand	"	Selected directories are expanded in the file listing,
+		or collapsed if they're already expanded.
+
+----------------------------  MAILING LIST  ----------------------------
+
+A web forum and mailing list for discussion, support and announcements
+regarding vshnu is available at
+
+	http://www.egroups.com/group/vshnu
+
+You needn't subscribe to this list to read or post to it.
+
+---------------------------  GPL COPYRIGHT  ----------------------------
+
+vshnu: the New Visual Shell
+Copyright (C) 1999-2000 Stephen B Kinzler
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or any
+later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program (see the file "COPYING"); if not, write to the
+Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+MA 02111-1307 USA
+
+========================================================================
+
+Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
+http://www.cs.indiana.edu/~kinzler
+
+Your feedback is welcome!

@@ -1,0 +1,29 @@
+The files in this directory can be installed and merged into your home
+directory Unix environment to implement an integration between a tcsh
+command line shell and a vshnu (or vsh) visual shell (as a sort of
+supplemental visual mode to tcsh).
+
+It's all rather kludgy, but they're shiny, polished and well-tested
+kludges :-)
+
+Each file here contains its own instructions on what to do with and
+about it.  "precmd" and "penv" will implement quick aliases to switch to
+vshnu while communicating current directory and environment information
+between the shells.  "lo" provides one convenient way to exit tcsh
+without having to exit vshnu explicitly as well.  "vshnu.tcsh.diff"
+is an optional patch file for the tcsh sources, which will suppress
+cluttering messages when suspending from vshnu back to tcsh.
+
+Here's a tcsh prompt setting for your ~/.tcshrc or ~/.cshrc file that
+looks nice with vshnu:
+
+	if ( $uid == 0 ) then
+		set prompt = '%{\e[41m%}%m:%. #%{\e[0m%} '
+	else
+		set prompt = '%S%m:%.%s '
+	endif
+
+========================================================================
+
+Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
+http://www.cs.indiana.edu/~kinzler

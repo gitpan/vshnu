@@ -1,0 +1,16 @@
+#!/usr/bin/perl
+$perl = '/usr/bin/perl';
+
+# penv - output environment variables in Perl-sourcable format
+# Steve Kinzler, kinzler@cs.indiana.edu, Jul 99
+# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unix
+
+# This is needed for the vsh*<->tcsh integration.  Adjust the locations
+# at the top for the correct path to your perl and install this file
+# executable somewhere in your $PATH, perhaps ~/bin.
+
+print "#!$perl\n";
+
+foreach (keys %ENV) {
+	print "chop(\$ENV{'$_'} = <<'EOEnv');\n", $ENV{$_}, "\nEOEnv\n";
+}

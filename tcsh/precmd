@@ -1,0 +1,50 @@
+#!/bin/csh
+
+set mytmp = /tmp
+
+# etc/precmd - tcsh and vshnu/vsh interaction setup script
+# Steve Kinzler, kinzler@cs.indiana.edu, Mar 98/Mar 99
+# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
+# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
+# see also http://www.cs.indiana.edu/hyplan/kinzler/home.html#binp/penv
+
+# For use with the vsh*<->tcsh integration.  This file allows directory
+# changes to be communicated between vsh* and tcsh, and environment
+# changes to be propogated from tcsh to vsh*.  It provides quick aliases
+# for switching back to vsh*.  It assumes the `penv` command script is
+# available.
+
+# To use this, you may install this file as ~/etc/precmd and add the
+# following to your ~/.tcshrc or ~/.cshrc file:
+#
+#	if ( $?prompt && $?tcsh ) then
+#		alias V 'alias precmd "source ~/etc/precmd"; $VSH'
+#		if ( ! $?alias_v ) then
+#			alias v V
+#			alias vv V
+#			set alias_v
+#		endif
+#	endif
+#	setenv VSH vshnu	# vsh* only
+#
+# and then start a new vsh* supplemental shell with a "v" command (the
+# first time) or "V" (any time), and return to vsh* mode with "v".  "vv"
+# returns to vsh* mode in the same directory you were last in there.
+
+jobs -l > $mytmp/precmd$$
+set vshpid = `sed -n '/[ (]vsh/s/.* \([0-9]*\) S[tu].*/\1/p' $mytmp/precmd$$`
+\rm -f $mytmp/precmd$$
+set vshtmp = $mytmp/vsh$vshpid vshenv = $mytmp/env$vshpid
+unset vshpid mytmp
+
+alias getvshdir 'set vshdir = "`cat $vshtmp`"; \rm -f $vshtmp $vshenv'
+alias setvshdir 'set umask = 0`umask`; umask 077; echo "$cwd" > $vshtmp;' \
+		'penv > $vshenv; umask $umask; unset umask'
+alias vcd 'pushd "$vshdir" > /dev/null'
+alias vv "alias precmd 'unalias precmd; getvshdir; vcd'; %vsh"
+alias v 'setvshdir; vv'
+
+unalias precmd; getvshdir; vcd
+
+# NOTE to bash porters: $PROMPT_COMMAND could probably be used in bash
+#			as precmd is in tcsh.

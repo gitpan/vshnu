@@ -1,0 +1,38 @@
+# vshnu.tcsh.diff - optional patch to tcsh for use with vshnu/vsh
+# Steve Kinzler, kinzler@cs.indiana.edu, Jun 94/May 00
+# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
+# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unix
+
+This is an optional patch to tcsh to prevent it from printing useless
+and misleading things like "Suspended" and "(wd now: ~)" when (and only
+when) suspending from vsh* back to tcsh.
+
+This patch was generated from the tcsh 6.05.00 sources and is compatible
+with at least tcsh 6.{03-06,09}.00.
+
+*** sh.proc.c.old	Sat Jun 25 17:02:49 1994
+--- sh.proc.c	Mon Jun 27 15:58:27 1994
+***************
+*** 584,591 ****
+      if (tpgrp > 0)		/* get tty back */
+  	(void) tcsetpgrp(FSHTTY, tpgrp);
+  #endif /* BSDJOBS */
+!     if ((jobflags & (PSIGNALED | PSTOPPED | PTIME)) ||
+! 	!eq(dcwd->di_name, fp->p_cwd->di_name)) {
+  	if (jobflags & PSTOPPED) {
+  	    xputchar('\n');
+  	    if (adrof(STRlistjobs)) {
+--- 584,596 ----
+      if (tpgrp > 0)		/* get tty back */
+  	(void) tcsetpgrp(FSHTTY, tpgrp);
+  #endif /* BSDJOBS */
+!     if (((jobflags & (PSIGNALED | PSTOPPED | PTIME)) ||
+! 	 !eq(dcwd->di_name, fp->p_cwd->di_name)) &&
+! #ifdef SHORT_STRINGS
+! 	Strncmp(fp->p_command, str2short("vsh"), 3)) {
+! #else /* !SHORT_STRINGS */
+! 	Strncmp(fp->p_command, "vsh", 3)) {
+! #endif /* !SHORT_STRINGS */
+  	if (jobflags & PSTOPPED) {
+  	    xputchar('\n');
+  	    if (adrof(STRlistjobs)) {

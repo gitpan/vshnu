@@ -1,0 +1,27 @@
+#!/bin/csh
+
+# etc/lo - *csh logout script
+# Steve Kinzler, kinzler@cs.indiana.edu, Mar 00
+# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
+
+# This file is to be run upon the exit of your *csh shell.  One way to do
+# this is to install this file as ~/etc/lo and add the following to your
+# ~/.*cshrc file:
+#
+#	if ( $?prompt ) then
+#		alias lo 'source ~/etc/lo; exit'
+#	endif
+#
+# and then exit your shells by running "lo".
+
+# For use with the vsh*<->tcsh integration.  This automatically kills any
+# running vsh* supplemental shell, for your convenience.
+if ( $?vshtmp ) then
+	unset vshtmp
+	kill %vsh
+	if ( $?VSH ) then
+		if ( $VSH == vsh ) %vsh
+	endif
+endif
+
+clear

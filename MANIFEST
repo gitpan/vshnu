@@ -1,0 +1,14 @@
+COPYING
+MANIFEST
+Makefile.PL
+README
+libperl/Term/ANSIColor
+libperl/Term/Screen
+tcsh/README
+tcsh/lo
+tcsh/penv
+tcsh/precmd
+tcsh/vshnu.tcsh.diff
+vshnu
+vshnucfg.pl
+vshnurc.pl
