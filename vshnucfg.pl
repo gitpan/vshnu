@@ -13,7 +13,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0009 1.0003);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0010 1.0003);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
@@ -26,6 +26,7 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0007  25 May 2001	Recognize .\d\w extensions as man pages
 # 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
 # 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
+# 1.0010  02 Jul 2001	Defined some function keys for navigation
 
 ###############################################################################
 ## External configuration #####################################################
@@ -363,9 +364,20 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 			    . ' wrapping around to the maximum'],
 "}"	=> ['point ">1"', 'slide the point down one file, wrapping around'],
 "~"	=> ['cd "~"; win', "cd to the user's home directory"],
-"\177"	=> ['bag "["', 'slide the bag backward on the screen'],
+"pgup"	=> ['point "-1"', 'slide the point up one file'],
+"pgdn"	=> ['point "+1"', 'slide the point down one file'],
+"kl"	=> ['bag "-1"',	    'slide the bag left on the screen'],
+"kr"	=> ['bag "+1"',	    'slide the bag right on the screen'],
+"ku"	=> ['bag "", "-1"', 'slide the bag up on the screen'],
+"kd"	=> ['bag "", "+1"', 'slide the bag down on the screen'],
 ""	=> ['beep; home', 'invalid command key'],
 );
+
+$keymap_{"ins"}	 = $keymap_{"\cI"};
+$keymap_{"del"}	 = $keymap_{"\177"} = $keymap_{"\cH"};
+$keymap_{"home"} = $keymap_{"~"};	# potential protocol escape char
+$keymap_{"end"}	 = $keymap_{"\c["};	# potential protocol escape char
+# numbered function keys might be usable as "k1" through "k12"
 
 ###############################################################################
 ## "Choose" keymap configuration ##############################################

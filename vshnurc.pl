@@ -16,7 +16,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0007 1.0009);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0007 1.0010);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
      "($cfg::version)") if $rc::require != $cfg::version;

@@ -18,11 +18,12 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0005);
+($vname, $version) = qw(vshnu 1.0010);
 
 # 1.0000  07 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
 # 1.0005  26 Jan 2001	Use most specific LS_COLORS match
+# 1.0010  02 Jul 2001	Improved function key support
 
 ###############################################################################
 ## Initial setup ##############################################################
@@ -88,8 +89,8 @@ undef $rlperl;
 while (1) {
 	$ch = $scr->getch();
 	$scr->flush_input();	# partly broken in Term::Screen 1.00 *shrug*
-	$ch_list = &scrtruncr($ch_list . sprintf(' 0%o', ord $ch))
-		if $debug_ch;
+	$ch_list = &scrtruncr($ch_list . ((length($ch) > 1) ? " $ch" :
+			      sprintf(' 0%o', ord $ch))) if $debug_ch;
 
 	$cmd = &keymapcmd();
 	$cdhistp = 0 unless grep { /\bcdhist\b/ } &cmdstrs($cmd);
@@ -1172,7 +1173,7 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 		$list{$key} = $val unless exists $list{$key};
 	}
 
-	foreach (sort bynulllast keys %list) {
+	foreach (sort bykeyorder keys %list) {
 		push(@list, &helpstr($_, '', $tab, $list{$_})) }
 
 	if ($unused) {
@@ -1189,7 +1190,9 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 	&pipeto($pager, @list);
 }
 
-sub bynulllast { ($b eq '') ? -1 : ($a eq '') ? 1 : $a cmp $b }
+sub bykeyorder { ($b eq '') ? -1 : ($a eq '') ? 1 :
+		 (length($a) == 1 && length($b) != 1) ? -1 :
+		 (length($a) != 1 && length($b) == 1) ?  1 : $a cmp $b }
 
 sub helpstr {
 	my($key, $prk, $tab, $cmd) = @_; my($v1, $v2) = (0, 0);
@@ -1281,7 +1284,8 @@ sub getoutput {
 }
 
 sub ask {
-	&home(), die "\n" if index("Yy$ch", &getkey(@_)) < 0;
+	&home(), die "\n" if index('Yy' . ((length($ch) == 1 && $ch !~ /n/i) ?
+					   $ch : ''), &getkey(@_)) < 0;
 	&home();
 }
 

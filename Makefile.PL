@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0009',	# package version
+	VERSION		=> '1.0010',	# package version
 					# also ../*.html, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
@@ -26,6 +26,7 @@ WriteMakefile (
 # 1.0007  29 May 2001	Recognize .\d\w exts as man pages; "go perl:" support
 # 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
 # 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
+# 1.0010  02 Jul 2001	Improved function key support and definitions
 
 sub MY::postamble { q~
 import:
