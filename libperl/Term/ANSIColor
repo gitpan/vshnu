@@ -1,5 +1,5 @@
 # Term::ANSIColor - color screen output using ANSI escape sequences
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#other
+# http://www.cs.indiana.edu/~kinzler/home.html#other
 
 # Term::ANSIColor -- Color screen output using ANSI escape sequences.
 # $Id: ANSIColor.pm,v 1.4 2001/07/10 08:52:05 eagle Exp $

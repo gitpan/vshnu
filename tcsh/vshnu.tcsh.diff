@@ -1,7 +1,7 @@
 # vshnu.tcsh.diff - optional patch to tcsh for use with vshnu/vsh
 # Steve Kinzler, kinzler@cs.indiana.edu, Jun 94/May 00
-# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unix
+# see website http://www.cs.indiana.edu/~kinzler/vshnu/
+# http://www.cs.indiana.edu/~kinzler/home.html#unix
 
 This is an optional patch to tcsh to prevent it from printing useless
 and misleading things like "Suspended" and "(wd now: ~)" when (and only

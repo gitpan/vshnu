@@ -9,13 +9,13 @@ $debug_ch = 0;
 
 # vshnu - an enhanced vsh-like visual shell supplement in Perl
 # Steve Kinzler, kinzler@cs.indiana.edu, Aug 99/Mar 00/Sep 00
-# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unix
+# see website http://www.cs.indiana.edu/~kinzler/vshnu/
+# http://www.cs.indiana.edu/~kinzler/home.html#unix
 
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0100);
+($vname, $version) = qw(vshnu 1.0107);
 
 # 1.0000  07 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -23,6 +23,13 @@ $debug_ch = 0;
 # 1.0010  02 Jul 2001	Improved function key support
 # 1.0013  27 Mar 2002	Use VSHNUTMP to enable tmp files and specify location
 # 1.0100  29 Mar 2002	Recognize VSHNUCWD and VSHNUENV for tmp file basenames
+# 1.0101  01 Apr 2002	Added ifopt and unlessopt utility subs
+# 1.0102  03 Apr 2002	Fixed bug in ifopt and unlessopt for older perls
+# 1.0103  16 Apr 2002	Added "use Data::Dumper" and &vardump
+# 1.0104  23 Apr 2002	Report $! errors from &sh and &shell
+# 1.0105  14 Jun 2002	Added $stty_cooked and $stty_raw
+# 1.0106  25 Nov 2002	Support non-ANSI non-color terminals
+# 1.0107  23 Jan 2003	Fixed readline for prompts w/ non-visible characters
 
 ###############################################################################
 ## Initial setup ##############################################################
@@ -37,18 +44,17 @@ $tmpcwd =~ s:/+:/:g; $tmpenv =~ s:/+:/:g;
 
 require 5.002;
 
+eval	'use Data::Dumper';
 use	Term::ReadLine;	# setenv PERL_RL {Gnu,Perl,false}, dflt best available
 
 require Term::Screen;
 use	Term::ANSIColor;
 
-require "dumpvar.pl" if $debug;		# to enable &dumpValue(DATAPTR)
-
 die "$0: stdin not a tty\n"			unless -t;
 die "usage: $0 [ dir ... ]\nVersion $version\n" if $ARGV[0] eq '-h';
 print("$version\n"), exit			if $ARGV[0] eq '-v';
 
-$ch   = $ch_list = $err = ''; $cooked = 0;
+$ch   = $ch_list = $err = $stty_cooked = $stty_raw = ''; $cooked = 0;
 $path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
 $scr  = new Term::Screen or die "$0: cannot create screen ($!)";
 $ENV{'PATH'} = $path; undef $path;	# to get /usr/ucb/stty on Solaris
@@ -57,6 +63,11 @@ $scr->noecho();
 
 $ncolors = $scr->{TERM}->{_Co};
 $color   = $ncolors > 1;
+$bold    = $scr->{TERM}->Tputs('md', 1);
+$reverse = $scr->{TERM}->Tputs('mr', 1) ||
+	   $scr->{TERM}->Tputs('so', 1);
+$normal  = $scr->{TERM}->Tputs('me', 1) ||
+	   $scr->{TERM}->Tputs('se', 1);
 map($ansicolor{$Term::ANSIColor::attributes{$_} + 0} = $_,
     keys %Term::ANSIColor::attributes);
 
@@ -77,6 +88,9 @@ $mail = -f $mailbox;
 (@cdhist) ? ($pwd = $cdhist[0]{'ls'}) : chomp($pwd = `pwd`);
 $pwd ne '' && &cd($pwd) or die "$0: cannot cd $pwd\n";
 undef $pwd;
+
+require "dumpvar.pl" if $debug;		# to enable &dumpvar(PACKAGE, VARS)
+					# and &dumpValue(DATAPTR)
 
 ###############################################################################
 ## Main execution loop and subroutines ########################################
@@ -204,7 +218,7 @@ sub win {
 			my $t = ' ' x $filelen;
 			substr($t, 0, $l) = $s;
 			$out .= '   ' . ((! $choose{$file}) ? ' ' :
-					 &colored($choose{$file}, $co_decor));
+					 &color($choose{$file}, $co_decor));
 			$out .= $t;
 			&setcdhist('file0', $file) if $file0 eq '';
 		}
@@ -220,7 +234,7 @@ sub win {
 
 sub win_err {
 	&home();
-	$scr->puts(colored $err, $co_error), $err = '', return if $err ne '';
+	$scr->puts(&color($err, $co_error)), $err = '', return if $err ne '';
 	return unless $mail;
 
 	my $size = -s $mailbox;
@@ -261,11 +275,11 @@ sub win_decor {
 	if ($a ne '' || $b ne '') {
 		my @b = &truncm($b, $w - length($a) - 1 -
 				    (($c ne '') ? length($c) + 1 : 0));
-		$a  = &colored("$a$b[0]", $co_decor);
-		$a .= $b[1] . &colored($b[2], $co_decor) if $#b > 0;
+		$a  = &color("$a$b[0]", $co_decor);
+		$a .= $b[1] . &color($b[2], $co_decor) if $#b > 0;
 		$scr->at($r, 0)->puts($a);
 	}
-	$scr->at($r, $w - length($c) - 1)->puts(colored $c, $co_decor)
+	$scr->at($r, $w - length($c) - 1)->puts(&color($c, $co_decor))
 		if $c ne '';
 }
 
@@ -298,7 +312,7 @@ sub win_bag {
 			  $scr->at(2 + $x + $row, $y + 1)
 			      ->puts($_[0] ? '>' : ' ')
 			: $scr->at(2 + $x + $row, $y)
-			      ->puts(($_[0] ? &colored($key, $co_decor) : ' ')
+			      ->puts(($_[0] ? &color($key, $co_decor) : ' ')
 				   . ($_[0] && $key eq $fileptr ? '>' : ' '));
 		$row++;
 
@@ -332,7 +346,7 @@ sub win_choose {
 		($x, $y) = @{$drawn{$_}},
 		    $scr->at($x + 2, $y + 2)
 			->puts(($choose{$_} eq '') ? ' ' :
-			       &colored($choose{$_}, $co_decor)) if $drawn{$_};
+			       &color($choose{$_}, $co_decor)) if $drawn{$_};
 	}
 	&win_time();
 }
@@ -359,7 +373,7 @@ sub home {
 
 sub msg {
 	&home();
-	$scr->puts(&colored(join(' ', @_), $co_msg));
+	$scr->puts(&color(join(' ', @_), $co_msg));
 }
 
 sub viewfile {
@@ -370,7 +384,7 @@ sub viewfile {
 	$f = &view($file);
 	$f = ($f =~ /\//) ? join('', &truncm($f, $n)) : &trunc($f, $n)
 		if length($f) > $n;
-	((&opt('C') ? &color($file, $f) : $f) . $tag, length($f . $tag));
+	((&opt('C') ? &colorfile($file, $f) : $f) . $tag, length($f . $tag));
 }
 
 sub scrtruncr {
@@ -531,9 +545,25 @@ sub tag {
 }
 
 sub color {
+	return $_[0]	    if $_[0] eq '';
+	return &colored(@_) if $color;
+	($_[1] eq 'bold')    ? $bold    . $_[0] . $normal :
+	($_[1] eq 'reverse') ? $reverse . $_[0] . $normal :
+	($_[1] eq '')	     ?		  $_[0]		  : &colored(@_);
+}
+
+# We assume the visible segment of the given colored text does not also
+# appear in either non-visible segment.
+sub rl_prompt_mark_ignore {
+	return $_[0] unless $_[0] ne '' && $_[0] =~ /^(.*)\Q$_[1]\E(.*)$/;
+	(($1 ne '') ? "\001$1\002" : '') . $_[1] . 
+	(($2 ne '') ? "\001$2\002" : '');
+}
+
+sub colorfile {
 	my($file, $f) = @_;
 	$f = $file if $f eq '';
-	&colored($f, &filecolor($file));
+	&color($f, &filecolor($file));
 }
 
 sub filecolor {
@@ -580,31 +610,31 @@ sub colorperms {
 	my $co_w = ($t eq 'l') ? '' : $co_write;
 	$ur = "$ur$uw";
 
-	$t = &colored($t, $co_ftype) if $co_ftype;
+	$t = &color($t, $co_ftype) if $co_ftype;
 	if ($> == 0 || $> == $uid) {
 		$co_u = $co_myper if $>;
-		$gw   = &colored($gw, $co)
+		$gw   = &color($gw, $co)
 			if $co = ($gw eq 'w' && $co_w) ? $co_w : $co_g;
-		$ow   = &colored($ow, $co)
+		$ow   = &color($ow, $co)
 			if $co = ($ow eq 'w' && $co_w) ? $co_w : $co_o;
 	} elsif (grep($gid == $_, split(/\s+/, $) ))) {
 		$co_g = $co_myper;
-		$gw   = &colored($gw, $co_g) if $co_g;
-		$ow   = &colored($ow, $co)
+		$gw   = &color($gw, $co_g) if $co_g;
+		$ow   = &color($ow, $co)
 			if $co = ($ow eq 'w' && $co_w) ? $co_w : $co_o;
 	} else {
 		$co_o = $co_myper;
-		$gw   = &colored($gw, $co_g) if $co_g;
-		$ow   = &colored($ow, $co_o) if $co_o;
+		$gw   = &color($gw, $co_g) if $co_g;
+		$ow   = &color($ow, $co_o) if $co_o;
 	}
-	$ur = &colored($ur, $co_u) if $co_u;
-	$gr = &colored($gr, $co_g) if $co_g;
-	$or = &colored($or, $co_o) if $co_o;
-	$ux = &colored($ux, $co)
+	$ur = &color($ur, $co_u) if $co_u;
+	$gr = &color($gr, $co_g) if $co_g;
+	$or = &color($or, $co_o) if $co_o;
+	$ux = &color($ux, $co)
 		if $co = ($ux =~ /[st]/i && $co_sbits) ? $co_sbits : $co_u;
-	$gx = &colored($gx, $co)
+	$gx = &color($gx, $co)
 		if $co = ($gx =~ /[st]/i && $co_sbits) ? $co_sbits : $co_g;
-	$ox = &colored($ox, $co)
+	$ox = &color($ox, $co)
 		if $co = ($ox =~ /[st]/i && $co_sbits) ? $co_sbits : $co_o;
 
 	"$t$ur$ux$gr$gw$gx$or$ow$ox";
@@ -612,25 +642,25 @@ sub colorperms {
 
 sub colorkey {
 	local $_ = join('', @_);
-	return &colored($_, $co_ckey) if $co_ckey && /^\^./;
-	return &colored($_, $co_nkey) if $co_nkey && /^\\./;
-	return &colored($_, $co_wkey) if $co_wkey && /^<.*>$/;
-	return &colored($_, $co_0key) if $co_0key && /^\d$/;
-	return &colored($_, $co_Akey) if $co_Akey && /^[A-Z]$/;
-	return &colored($_, $co_akey) if $co_akey && /^[a-z]$/;
-	($co_key) ? &colored($_, $co_key) : $_;
+	return &color($_, $co_ckey) if $co_ckey && /^\^./;
+	return &color($_, $co_nkey) if $co_nkey && /^\\./;
+	return &color($_, $co_wkey) if $co_wkey && /^<.*>$/;
+	return &color($_, $co_0key) if $co_0key && /^\d$/;
+	return &color($_, $co_Akey) if $co_Akey && /^[A-Z]$/;
+	return &color($_, $co_akey) if $co_akey && /^[a-z]$/;
+	($co_key) ? &color($_, $co_key) : $_;
 }
 
 sub colorcmd {
 	local $_ = join('', @_);
-	return &colored($_, $co_desc) if s/^\\//;
+	return &color($_, $co_desc) if s/^\\//;
 	my $re   = join('|', @tail); my $tail = '';
 	my $com  = (s/(^|\s)(#.*)/$1/) ? $2 : '';
 	eval { $tail = ($re && s/((^|;)\s*)((($re)\s*(;|$)\s*)+)$/$1/)
 		       ? $3 : '' }; &err($@) if $@;
-	$com  = &colored($com,  $co_com)  if $co_com  && $com  ne '';
-	$tail = &colored($tail, $co_tail) if $co_tail && $tail ne '';
-	$_    = &colored($_,    $co_cmd)  if $co_cmd  && $_    ne '';
+	$com  = &color($com,  $co_com)  if $co_com  && $com  ne '';
+	$tail = &color($tail, $co_tail) if $co_tail && $tail ne '';
+	$_    = &color($_,    $co_cmd)  if $co_cmd  && $_    ne '';
 	"$_$tail$com";
 }
 
@@ -961,8 +991,8 @@ sub longstr {
 	$! = 0;
 	my($Dev, $inode, $mode, $nlink, $uid, $gid, $Rdev, $size, 
 	   $atime, $mtime, $ctime) = &opt('L') ? stat shift : lstat shift;
-	return &colored(&trunc($!,	    $_[0]), $co_error) if $! + 0;
-	return &colored(&trunc(readlink $_, $_[0]), $co_symln)
+	return &color(&trunc($!,	  $_[0]), $co_error) if $! + 0;
+	return &color(&trunc(readlink $_, $_[0]), $co_symln)
 		if ! &opt('h') && ! &opt('L') && -l _;
 
 	my $perms;
@@ -1004,22 +1034,22 @@ sub longstr {
 	return &trunc($r, $_[0]) if ! &opt('n') || length($r) > $_[0];
 
 	$perms = &colorperms($perms, $uid, $gid);
-	$nlink =~ s/\S+/&colored($&, $co_nlink)/e if $co_nlink;
+	$nlink =~ s/\S+/&color($&, $co_nlink)/e if $co_nlink;
 
 	my $co = $co_user{$user} ||
 		 $co_user{('', $uid, $gid, '')[$long]} || $co_user{''};
-	substr($usize, 0, length($user)) = &colored($user, $co) if $co;
+	substr($usize, 0, length($user)) = &color($user, $co) if $co;
 
 	if ($size =~ /^\d+$/ && ($co_size1 || $co_size2)) {
 		my $n = 0; my @size = ();
-		unshift(@size, &colored($&, (++$n % 2) ? $co_size1
-						       : $co_size2))
+		unshift(@size, &color($&, (++$n % 2) ? $co_size1
+						     : $co_size2))
 			while $size =~ s/.?.?.$//;
 		$usize =~ s/\d+$/join('', @size)/e;
 	}
 
-	$ctime = &colored($ctime, (time - $ftime > &txt2secs($aged))
-				  ? $co_aged : $co_xaged);
+	$ctime = &color($ctime, (time - $ftime > &txt2secs($aged))
+				? $co_aged : $co_xaged);
 
 	"$perms $nlink $usize $ctime";
 }
@@ -1054,6 +1084,16 @@ sub opt {
 	my $opt = shift;
 	return 0 unless length($opt) == 1 && index($optkeys, $opt) >= 0;
 	index($optons, $opt) >= 0 xor $opts{$opt};
+}
+
+sub ifopt {
+	(  &opt($_[0]))	? (($#_ >= 1) ? $_[1] : '-' . $_[0])
+			: (($#_ >= 2) ? $_[2] : ());
+}
+
+sub unlessopt {
+	(! &opt($_[0]))	? (($#_ >= 1) ? $_[1] : '-' . $_[0])
+			: (($#_ >= 2) ? $_[2] : ());
 }
 
 ###############################################################################
@@ -1191,7 +1231,7 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 			$_ = &viewas(pack('c', $$_[0])) . '-' .
 			     &viewas(pack('c', $$_[1]));
 		}
-		push(@list, &colored('UNUSED  ' . join(' ', @seq), $co_xuse));
+		push(@list, &color('UNUSED  ' . join(' ', @seq), $co_xuse));
 	}
 
 	&pipeto($pager, @list);
@@ -1212,10 +1252,10 @@ sub helpstr {
 			    &cmds($cmd));
 
 	$key = (length($key) == 1) ? &colorkey($v1 = &viewas($key)) :
-			&colored($v1 = &view($key), $co_code);
+			&color($v1 = &view($key), $co_code);
 	$prk = (length($prk) == 0) ? ''				    :
 	       (length($prk) == 1) ? &colorkey($v2 = &viewas($prk)) :
-			&colored($v2 = &view($prk), $co_code);
+			&color($v2 = &view($prk), $co_code);
 	$key = $key . (($prk ne '') ? " $prk" : '');
 
 	$v1  = length($v1) + (($prk ne '') ? 1 + length($v2) : 0);
@@ -1231,9 +1271,9 @@ sub cmdprompt {
 		push(@p, &colorkey($v = &viewas(substr($$_[2], 0, 1))),
 			 ' ' x (8 - length($v)),
 			 ($$_[3] ne '') ?
-				&colored(&view(eval("qq^$$_[3]^")), $co_prmt) :
+				&color(&view(eval("qq^$$_[3]^")), $co_prmt) :
 			 ($$_[1] ne '' && ! &opt('p')) ?
-				&colored(&view(eval("qq^$$_[1]^")), $co_desc) :
+				&color(&view(eval("qq^$$_[1]^")), $co_desc) :
 				&colorcmd(&view($$_[0])), "\n");
 	}
 	&home(); &echo(@p);
@@ -1341,17 +1381,39 @@ sub beep {
 }
 
 ###############################################################################
+## Perl environment subroutines ###############################################
+
+sub vardump {
+	return '# Requires Data::Dumper module, standard with perl 5.004_71'
+	     . " and later.\n" unless defined $Data::Dumper::VERSION;
+	my($r)	  = '';
+	local($_) = join(',', @_); s/^[\s,;]*$/\\%::/;
+	foreach (grep { /./ } split(/[\s,;]+/)) {
+		$r .= "# scalar, reference or object = $_\n"
+		   .  Data::Dumper->new([eval $_])
+				  ->Purity(1)->Terse(1)->Deepcopy(1)->Dump;
+	}
+	$r;
+}
+
+###############################################################################
 ## System interface subroutines ###############################################
 
 sub sigs_off  { @SIG{qw/INT WINCH TSTP/} = qw/DEFAULT DEFAULT tstp/ }
 sub sigs_on   { @SIG{qw/INT WINCH TSTP/} = qw/IGNORE  winch   stop/ }
 sub winch_off { $SIG{'WINCH'} = 'DEFAULT' }
-sub winch_on  { $SIG{'WINCH'} = \&winch   }
+sub winch_on  { $SIG{'WINCH'} = 'winch'   }
 
 sub bakescr {
 	(($_[0] =~ /./) ? $_[0] : $cooked)
-		? eval { system('stty -raw echo') }
-		: eval { system('stty raw -echo') };
+		? eval { system("stty -raw echo $stty_cooked") }
+		: eval { system("stty raw -echo $stty_raw") };
+	# These stty commands can have the unfortunate side-effect of
+	# changing a setting that the user may not want changed, even
+	# outside of vshnu -- eg -istrip for 8-bit characters.  You
+	# can run `setty -istrip` in tcsh, at least, to prevent it
+	# from being changed in tcsh's context.  You may also define
+	# $stty_cooked and $stty_raw to make corrections.
 }
 
 sub winch {
@@ -1363,7 +1425,7 @@ sub winch {
 }
 
 sub getkey {
-	$scr->puts(join(' ', map(&colored($_, $co_decor), @_)) . '  ')
+	$scr->puts(join(' ', map(&color($_, $co_decor), @_)) . ' ')
 	    ->clreol() if @_;
 	my $ch = $scr->getch();
 	$scr->flush_input();	# partly broken in Term::Screen 1.00 *shrug*
@@ -1374,8 +1436,8 @@ sub getstr {
 	my $rl = shift; my $str;
 	&bakescr($cooked = 1);
 	&winch_off();		# Gnu readline sometimes signals WINCH
-	$str = $rl->readline((@_) ? join(' ', map(&colored($_, $co_decor),
-						  @_)) . '  ' : '');
+	$str = $rl->readline((! @_) ? '' : join(' ',
+	    map(&rl_prompt_mark_ignore(&color($_, $co_decor), $_), @_)) . ' ');
 	&winch_on();
 	&bakescr($cooked = 0);
 	$rl->addhistory($str) if $str =~ /\S/;
@@ -1384,12 +1446,14 @@ sub getstr {
 
 sub sh {
 	my $no = ($_[0] eq '-noecho') ? shift : 0;
-	$scr->puts(join(' ', map(&colored(&view($_), $co_decor), @_)))
+	$scr->puts(join(' ', map(&color(&view($_), $co_decor), @_)))
 	    ->clreol() unless $no;
 	&bakescr($cooked = 1);
 	print "\n" unless $no;
 	&sigs_off();
+	$! = 0;
 	my @r = eval { system(@_) };
+	&err("sh: $!") if $!;
 	&sigs_on();
 	&bakescr($cooked = 0);
 	@r;
@@ -1401,12 +1465,14 @@ sub shell {
 	my $pre = $err;
 	1 while $cmd =~ s/\{\{(.*?)\}\}/join(' ', &myeval($1))/e;
 	return if $pre ne $err;
-	$scr->puts(colored &view($cmd), $co_decor)->clreol() unless $no;
+	$scr->puts(&color(&view($cmd), $co_decor))->clreol() unless $no;
 	&bakescr($cooked = 1);
 	print "\n" unless $no;
 	&sigs_off();
+	$! = 0;
 	my @r = eval { system($shell || $ENV{'SHELL'} ||
 			      '/bin/sh', '-c', $cmd) };
+	&err("shell: $!") if $!;
 	&sigs_on();
 	&bakescr($cooked = 0);
 	@r;
@@ -1414,7 +1480,7 @@ sub shell {
 
 sub perl {
 	my $no = ($_[0] eq '-noecho') ? shift : 0;
-	$scr->puts(colored &view(join(' ', @_)), $co_decor)->clreol() if ! $no;
+	$scr->puts(&color(&view(join(' ', @_)), $co_decor))->clreol() if ! $no;
 	&bakescr($cooked = 1);
 	print "\n" if ! $no;
 	&sigs_off();

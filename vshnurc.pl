@@ -1,19 +1,19 @@
 #!/usr/bin/perl
 
-# .vshnurc - personal extra vshnu configuration file
+# .vshnurc - personal extra vshnu reconfiguration file
 # Steve Kinzler, kinzler@cs.indiana.edu, Oct 00
-# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
+# see website http://www.cs.indiana.edu/~kinzler/vshnu/
+# http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
 
 # Many of the scripts and supporting external configurations used via this
-# file are available at http://www.cs.indiana.edu/hyplan/kinzler/home.html.
+# file are available at http://www.cs.indiana.edu/~kinzler/home.html.
 
 # Items used only within this .vshnurc are placed in the rc:: package.
 
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0100 1.0100);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0108 1.0103);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
      "($cfg::version)") if $rc::require != $cfg::version;
@@ -31,11 +31,21 @@
 # 1.0011  29 Oct 2001	Added "go movie:" option to G command
 # 1.0012  14 Feb 2002	Added "go book:" option to G command
 # 1.0100  29 Mar 2002	Added mail, download and print menu to default do entry
+# 1.0101  01 Apr 2002	Inherit directory action commands, use ifopt
+# 1.0102  26 May 2002	Use "pushmime" instead of "mimeexplode"
+# 1.0103  14 Jun 2002	Defined $stty_cooked to fix 8-bit characters
+# 1.0104  08 Aug 2002	Added P choose command for Palm downloads
+# 1.0105  20 Aug 2002	Added "go soft:" option to G command
+# 1.0106  18 Nov 2002	Added K command for simple "make"
+# 1.0107  17 Dec 2002	Added "go image:" option to G command
+# 1.0108  01 Jan 2003	Added "go prod:" option to G command
 
 ###############################################################################
 ## External reconfiguration ###################################################
 
 $shell = 'tcsh';		# for use by &shell
+
+$stty_cooked = '-istrip';	# corrections to `stty -raw echo`
 
 $cfg::pagera = 'less';		# pager that can display text as available
 $cfg::pagerr = 'less -R';	# raw pager for colored text
@@ -63,11 +73,9 @@ $typemap_{  '/(^|\/)_[^_].*\.mbox$/'} = $typemap_do{'/(^|\/|\.)mbox$/'};
 $typemap_do{'/(^|\/)_[^_].*\.mbox$/'} = $typemap_{''};
 
 $rc::retrm = '; ret("Remove?") && remove $_; winch';
-(@{$typemap_do{'-d _'}[0]}[0,3], @{$typemap_do{'-d _'}[1]}[0,3]) =
-	('shell "lls", opt("L") ? "-L" : (), "-R --color=yes -- $_q |'
-	 . ' $cfg::pagerr"; winch', 'lls -R',
-	 'shell "tls", opt("L") ? "-l" : (), "$_q |'
-	 . ' $cfg::pagerr"; winch', 'tls');
+${ $typemap_do{'-d _'}[0]}[0] =~ s/ls -al(.*)--/lls$1--color=yes --/ if $color;
+(${$typemap_do{'-d _'}[0]}[3], ${$typemap_do{'-d _'}[1]}[3]) =
+	('lls -R', 'tls -pug');
 $typemap_do{'/\.e?ps$/i'} =
 	[['xshell "ghostview $_q"; win',
 	  'display this PostScript file',	   'vVgG',  'view'],
@@ -149,6 +157,9 @@ $keymap_{"G"}	   =
 	 ['sh "go", "search:" . gets "Go Search:"; winch',
 	  'browse the results for the given web search query',
 	  'sS',   'search (Google)'],
+	 ['sh "go", "image:" . gets "Go Image:"; winch',
+	  'browse the results for the given web image search query',
+	  'iI',   'image (Google Images)'],
 	 ['sh "go", "news:" . gets "Go News:"; winch',
 	  'browse the results for the given usenet search query',
 	  'nN',   'news (Google Groups)'],
@@ -169,20 +180,26 @@ $keymap_{"G"}	   =
 	  'pP',   'perl (Perldoc)'],
 	 ['sh "go", "user:" . gets "Go User:"; winch',
 	  'browse the results for the given user directory query',
-	  'iI',   'user (U-M Directory)'],
+	  'hH',   'user (U-M Directory)'],
 	 ['sh "go", "book:" . gets "Go Book:"; winch',
 	  'browse the results for the given bookstore query',
 	  'zZ',   'book (Amazon)'],
 	 ['sh "go", "movie:" . gets "Go Movie:"; winch',
 	  'browse the results for the given movie database query',
 	  'mM',   'movie (IMDb)'],
+	 ['sh "go", "soft:" . gets "Go Software:"; winch',
+	  'browse the results for the given software archive query',
+	  'xX',   'software (Freshmeat)'],
+	 ['sh "go", "prod:" . gets "Go Product:"; winch',
+	  'browse the results for the given product search query',
+	  '$',   'product (Froogle)'],
 	 ['sh "webrowse", "-w", getfile("Go File (.):") || $cwd; winch',
 	  'browse the given file or directory (default current directory)',
 	  'fF',   'file (default current directory)'],
 	 ['sh "slashdot"; winch', 'browse the Slashdot website',
 	  '/?.'],
 	 ['sh "hmrccal"; winch', 'browse the HMRC calendar',
-	  'cChH'],
+	  'cC'],
 	 ['sh "webdaily", "-v"; winch', 'browse my daily web pages',
 	  'dD']];
 $keymap_{"J"}	 =
@@ -194,6 +211,7 @@ $keymap_{"J"}	 =
 	  "tree list the user's current processes", 'UtT', 'user tree'],
 	 ['sh "pstree -alp' . $cfg::page,
 	  'tree list all system processes',	    'S',   'system tree']];
+$keymap_{"K"}	 = ['sh "make"; ret; winch', 'run `make`'];
 $keymap_{"M"}[0] = 'shell getcmd "mak"; ret; winch';
 $keymap_{"N"}	 = ['sh "nn"; winch', 'run `nn`'];
 $keymap_{"^"}	 = ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
@@ -204,9 +222,9 @@ $keymap_{"^"}	 = ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
 ## "Choose" keymap reconfiguration ############################################
 
 $rc::rmunchoose = '("Remove?") && remove @choose' . $cfg::unchoose;
-$keymap_choose{"<"}    = ['sh "mimeexplode", @choose; ret' . $rc::rmunchoose,
+$keymap_choose{"<"}    = ['sh "pushmime", @choose; ret' . $cfg::unchoose,
 			  'explode the chosen mail messages into directories'];
-$keymap_choose{"A"}    = ['shell "stat", opt("L") ? () : "-l", "--", '
+$keymap_choose{"A"}    = ['shell "stat", unlessopt("L", "-l"), "--", '
 			  . 'quote(@choose), "| $cfg::pager"' . $cfg::unchoose,
 			  'run `stat` on the chosen files'];
 $keymap_choose{"E"}[0] = 'sh $cfg::editor, "--", @choose' . $cfg::unchoose;
@@ -215,6 +233,9 @@ $keymap_choose{"J"}    = ['sh "push", "--", @choose, gets "Directory:"; ret'
 			  'push the chosen files into the given directory'];
 $keymap_choose{"K"}    = ['sh "pop", "--", @choose; ret' . $cfg::unchoose,
 			  'pop files out of the chosen directories'];
+$keymap_choose{"P"}    = ['shell "+palm; exec pilot-xfer -i", quote(@choose);'
+			  . ' ret' . $rc::rmunchoose,
+			  'download the chosen files to a Palm'];
 $keymap_choose{"S"}    = ['sh "sendfile", @choose; ret' . $rc::rmunchoose,
 			  'mail the chosen message files'];
 $keymap_choose{"Z"}    = ['shell "z --", quote(@choose), "; ' . $cfg::shbeep

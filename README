@@ -96,7 +96,8 @@ o Recognizes the following standard environment variables: DISPLAY,
 ------------------------------  HISTORY  -------------------------------
 
 Vshnu was inspired by and initially patterned after the program `vsh`,
-the Visual Shell <http://www.cs.indiana.edu/~kinzler/vshnu/vsh.txt>.
+the Visual Shell <http://www.cs.indiana.edu/~kinzler/vshnu/vsh.txt>
+<http://www.cs.indiana.edu/~kinzler/vshnu/vsh-4.2k.tar.gz>.
 Vsh was written in the early 1980's and is pretty much obsolete bit
 rot now.  After failing to be included in a BSD distribution, it faded
 into obscurity. A SunOS port hasn't compiled since the pre-Solaris days,
@@ -310,6 +311,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler		      revised March 2002
+http://www.cs.indiana.edu/~kinzler		      revised April 2002
 
 Your feedback is welcome!

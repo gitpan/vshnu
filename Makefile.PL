@@ -2,12 +2,12 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0100',	# package version
-					# also ../*.html, freshmeat?, pause?
+	VERSION		=> '1.0107',	# package version; also ../*.html,
+					# mailing list?, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
 #	DATE		=> 'Nov 2000',
-#	URL		=> 'http://www.cs.indiana.edu/hyplan/kinzler/vshnu/',
+#	URL		=> 'http://www.cs.indiana.edu/~kinzler/vshnu/',
 	EXE_FILES	=> ['vshnu'],
 	PM		=> {'vshnucfg.pl' => '$(INST_LIBDIR)/vshnucfg.pl'},
 	PREREQ_PM	=> {'Term::Screen'    => '0',
@@ -31,6 +31,12 @@ WriteMakefile (
 # 1.0012  01 Feb 2002	Added viewing actions for SSL files
 # 1.0013  27 Mar 2002	Use VSHNUTMP to enable tmp files and specify location
 # 1.0100  29 Mar 2002	Use VSHNUCWD and VSHNUENV; Added bash integration
+# 1.0101  01 Apr 2002	Enhanced directory actions; Added ifopt and unlessopt
+# 1.0102  03 Apr 2002	Fixed bug in ifopt and unlessopt for older perls
+# 1.0103  18 Apr 2002	Added ^_ command for variable listing
+# 1.0105  14 Jun 2002	Report $! from &sh and &shell; Added $stty_{cooked,raw}
+# 1.0106  25 Nov 2002	Support non-ANSI non-color terminals
+# 1.0107  23 Jan 2003	Fixed readline for prompts w/ non-visible characters
 
 sub MY::postamble { q~
 import:

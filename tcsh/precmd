@@ -2,9 +2,9 @@
 
 # etc/precmd - tcsh and vshnu/vsh interaction setup script
 # Steve Kinzler, kinzler@cs.indiana.edu, Mar 98/Mar 99/Mar 02
-# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
-# see also http://www.cs.indiana.edu/hyplan/kinzler/home.html#binp/penv
+# see website http://www.cs.indiana.edu/~kinzler/vshnu/
+# http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
+# see also http://www.cs.indiana.edu/~kinzler/home.html#binp/penv
 
 # For use with the vsh*<->tcsh integration.  This file allows directory
 # changes to be communicated between vsh* and tcsh, and environment

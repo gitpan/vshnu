@@ -2,7 +2,7 @@
 
 # etc/lo - *csh logout script
 # Steve Kinzler, kinzler@cs.indiana.edu, Mar 00
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
+# http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
 
 # This file is to be run upon the exit of your *csh shell.  One way to do
 # this is to install this file as ~/etc/lo and add the following to your

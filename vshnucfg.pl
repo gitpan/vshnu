@@ -4,8 +4,8 @@ $default_vshnurc = '';
 
 # .vshnucfg - required general vshnu configuration file
 # Steve Kinzler, kinzler@cs.indiana.edu, Aug 99/Mar 00/Sep 00
-# see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
-# http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
+# see website http://www.cs.indiana.edu/~kinzler/vshnu/
+# http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
 
 # Items used only within and below this .vshnucfg are placed in the cfg::
 # package.
@@ -13,7 +13,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0100 1.0003);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0103 1.0103);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
@@ -30,6 +30,8 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0011  19 Oct 2001	Added `md5sum` long listing
 # 1.0012  01 Feb 2002	Added viewing actions for SSL files
 # 1.0100  29 Mar 2002	Moved Y command to U, added Y as tree list cwd
+# 1.0101  01 Apr 2002	Enhanced directory actions, use ifopt
+# 1.0103  16 Apr 2002	Added ^_ command for variable listing
 
 ###############################################################################
 ## External configuration #####################################################
@@ -159,12 +161,12 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 %typemap_do = (		# ?
 ' /^$/'		=> 'win',
 '! -e _'	=> 'beep; win',
-'-d _'		=> [['shell "ls -al", opt("L") ? "-L" : (), "-R -- $_q |'
-		     . ' $cfg::pagerr"; winch',
+'-d _'		=> [['shell "ls -al", ifopt("L"), ifopt("T", "-F"), "-R --'
+		     .   ' $_q | $cfg::pagerr"; winch',
 		     'long list this directory recursively', 'lL', 'ls -lR'],
-		    ['shell "tree -aAC", opt("L") ? "-l" : (), "$_q |'
-		     . ' $cfg::pagerr"; winch',
-		     'tree list this directory',	     'tT', 'tree']],
+		    ['shell "tree -aACpug", ifopt("L", "-l"), ifopt("T", "-F")'
+		     . ', "$_q | $cfg::pagerr"; winch',
+		     'long tree list this directory',	   'tT', 'tree -pug']],
 '/(^|\/|\.)mbox$/'
 		=> ['sh "mail", "-f", $_; winch',
 		    'run `mail` on this mailbox file'],
@@ -176,7 +178,7 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 '/\.(avi|mo?v(ie)?|mpe?g|qt)$/i'
 		=> ['xshell "xanim +Sr +Ca -Cn -b -B -- $_q"; win',
 		    'play this video file'],
-'/\.(bmp|gif|jpe?g|p[bgp]m|png|tiff?|x[bp]m)$/i'
+'/\.(bmp|gif|jpe?g|p[bgp]m|pcx|png|tiff?|x[bp]m)$/i'
 		=> ['xshell "xv $_q"; win', 'display this image file'],
 '/\.(dir|pag)$/'=> ['sh "makedbm -u $_rq' . $cfg::page,
 		    'view a dump of this dbm file'],
@@ -307,6 +309,8 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'rewind and cd to the start of the directory history'],
 "\c["	=> ['win "<1"', 'shift the file display left one column'],
 "\c]"	=> ['win ">1"', 'shift the file display right one column'],
+"\c_"	=> ['pipeto $cfg::pager, "#!/bin/perl\n", vardump get "Refs (all):";'
+	    . ' winch', 'list the given perl variables with their values'],
 " "	=> ['win "]#", 1, 1', 'page to the next screen of this display'],
 "\""	=> ['typemap "*expand"', 'toggle the expand/collapse file type mode'],
 "#"	=> [['$aged = gets "Age ($aged):"; winch',
@@ -359,7 +363,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 ">"	=> ['point', 'act on the point file by its type'],
 "?"	=> ['typemap "*do"; msg $cfg::quemarkmsg',
 	    'toggle the special action file type mode'],
-"F"	=> ['longls "-win", "file", opt("L") ? "-L" : (), "--"',
+"F"	=> ['longls "-win", "file", ifopt("L"), "--"',
 	    'long list files with their `file` output'],
 "L"	=> ['longls "-win", "+1"',
 	    'long list files with their stat info, repeat for more'],
@@ -371,8 +375,8 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "T"	=> ['sh "top -S"; winch', 'run `top -S`'],
 "U"	=> ['shell getcmd "man"; winch', 'run `man` with the given arguments'],
 "V"	=> ['stop; winch', 'suspend to the master shell'],
-"Y"	=> ['sh "tree -aAC . | $cfg::pagerr"; winch',
-	    'tree list the current directory'],
+"Y"	=> ['shell "tree -aAC", ifopt("L", "-l"), ifopt("T", "-F"),'
+	    . ' ". | $cfg::pagerr"; winch', 'tree list the current directory'],
 "["	=> ['expand "expand", $point; win', 'expand the point file'],
 "\\"	=> ['cdhist "back"; win', 'cd back to the prior directory'],
 "]"	=> ['expand "collapse", $point; win', 'collapse the point file'],
@@ -432,7 +436,7 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	     'run `chmod` on the chosen files', 'mM', 'chmod'],
 	    ['sh "chown", gets("Owner:"), @choose; ret' . $cfg::unchoose,
 	     'run `chown` on the chosen files', 'oO', 'chown'],
-	    ['sh "chgrp", opt("h") ? "-h" : (), gets("Group:"), @choose; ret'
+	    ['sh "chgrp", ifopt("h"), gets("Group:"), @choose; ret'
 	     . $cfg::unchoose,
 	     'run `chgrp` on the chosen files', 'gG', 'chgrp']],
 "D"	=> ['ask "Remove recursively?"; shell "rm -r --", quote(@choose), "; '
