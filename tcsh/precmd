@@ -1,9 +1,7 @@
 #!/bin/csh
 
-set mytmp = /tmp
-
 # etc/precmd - tcsh and vshnu/vsh interaction setup script
-# Steve Kinzler, kinzler@cs.indiana.edu, Mar 98/Mar 99
+# Steve Kinzler, kinzler@cs.indiana.edu, Mar 98/Mar 99/Mar 02
 # see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
 # http://www.cs.indiana.edu/hyplan/kinzler/home.html#unixcfg
 # see also http://www.cs.indiana.edu/hyplan/kinzler/home.html#binp/penv
@@ -18,6 +16,7 @@ set mytmp = /tmp
 # following to your ~/.tcshrc or ~/.cshrc file:
 #
 #	if ( $?prompt && $?tcsh ) then
+#		setenv VSHNUTMP /tmp
 #		alias V 'alias precmd "source ~/etc/precmd"; $VSH'
 #		if ( ! $?alias_v ) then
 #			alias v V
@@ -31,20 +30,17 @@ set mytmp = /tmp
 # first time) or "V" (any time), and return to vsh* mode with "v".  "vv"
 # returns to vsh* mode in the same directory you were last in there.
 
-jobs -l > $mytmp/precmd$$
-set vshpid = `sed -n '/[ (]vsh/s/.* \([0-9]*\) S[tu].*/\1/p' $mytmp/precmd$$`
-\rm -f $mytmp/precmd$$
-set vshtmp = $mytmp/vsh$vshpid vshenv = $mytmp/env$vshpid
-unset vshpid mytmp
+jobs -l > $VSHNUTMP/precmd$$
+set vshpid=`sed -n '/[ (]vsh/s/.* \([0-9]*\) S[tu].*/\1/p' $VSHNUTMP/precmd$$`
+\rm -f $VSHNUTMP/precmd$$
+set vshtmp=$VSHNUTMP/vsh$vshpid vshenv=$VSHNUTMP/env$vshpid
+unset vshpid
 
-alias getvshdir 'set vshdir = "`cat $vshtmp`"; \rm -f $vshtmp $vshenv'
-alias setvshdir 'set umask = 0`umask`; umask 077; echo "$cwd" > $vshtmp;' \
+alias getvshdir 'set vshdir="`cat $vshtmp`"; \rm -f $vshtmp $vshenv'
+alias setvshdir 'set umask=0`umask`; umask 077; echo "$cwd" > $vshtmp;' \
 		'penv > $vshenv; umask $umask; unset umask'
 alias vcd 'pushd "$vshdir" > /dev/null'
 alias vv "alias precmd 'unalias precmd; getvshdir; vcd'; %vsh"
 alias v 'setvshdir; vv'
 
 unalias precmd; getvshdir; vcd
-
-# NOTE to bash porters: $PROMPT_COMMAND could probably be used in bash
-#			as precmd is in tcsh.

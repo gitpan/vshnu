@@ -39,7 +39,7 @@ certain circles such as Emacs' "dired" mode and the Midnight Commander
 program.  I believe this is because they have been designed as largely
 self-contained applications with limited configurability.  Using a visual
 shell has required a significant jump into a new base interface tool,
-and few are so compelling to make that worthwhile.
+and few are so compelling or standard to make that worthwhile.
 
 Hence the design of `vshnu`, the New Visual Shell.  In the Unix
 tradition, it works with things already there and fills a empty niche.
@@ -48,7 +48,7 @@ line shell, your editor, your pager, and access to all your tools, tricks
 and know-how.  Vshnu can operate as an optional supplemental visual mode
 to your command line shell.  You switch between command line and visual
 mode easily as you wish.  Your interface bandwidth and power for Unix
-operations is on a higher plane and life gets sweeter :-).  In addition,
+operations is on a higher plane and life gets sweeter.  In addition,
 being written in Perl, it ports to any Unix system without compilation,
 gives you the advantages of a Perl interpreter running readily at
 hand, and permits visual command customizability limited only by your
@@ -71,8 +71,8 @@ whatever more you put into using it.
 
 o Multiple methods for choosing and operating on individual or arbitrary
   sets of files
-o Key commands and file actions are 100% configurable, extensible and
-  arbitrarily complex, including multiple choice options
+o Key commands and file actions are 100% configurable, extensible, self-
+  documenting and arbitrarily complex, including multiple choice options
 o File actions are customizable by file name/type/contents/etc, with
   common actions configured by default
 o Online help descriptions of key commands and file actions, by mode
@@ -119,6 +119,15 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     just add a ".pm" extension to the filenames and copy them into a
     directory in your Perl's @INC or into $HOME/lib/Term, $HOME/libp/Term,
     $HOME/lib/perl/Term or $HOME/libp/perl/Term.
+
+    Term::Screen uses Term::Cap, so you'll need a termcap file containing
+    your terminals' capabilities definitions.  Most systems already
+    have one, but in case yours doesn't, a very complete termcap file is
+    available at <http://www.tuxedo.org/~esr/terminfo/termtypes.tc.gz>.
+    A much briefer one containing only some common terminals is
+    at <http://www.cs.indiana.edu/~kinzler/home.html#etc/termcap>.
+    The termcap file may be installed as $TERMCAP, $HOME/.termcap,
+    /etc/termcap or /usr/share/misc/termcap.
 
 2)  OPTIONAL
 
@@ -175,9 +184,8 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     two shells.
 
     See the subdirectory here for your command line shell for further
-    direction.  Currently, only `tcsh` is available.  Contributions of
-    other shell integrations are very welcome (a `bash` port should be
-    fairly easy using $PROMPT_COMMAND like tcsh's precmd alias).
+    direction.  Contributions of other shell integrations are very
+    welcome.
 
 5)  PERSONAL CONFIGURATION
 
@@ -222,8 +230,8 @@ with the supplied configuration:
 Of course, there's much, much more possible.  Type '%' within each mode
 of vshnu to see all the key commands available and what they'll do.
 Type '&' to see what file actions will be performed upon selecting files
-in the current file action mode.  Type <Control-N> following by a key
-to see what would happen with that key command.
+in the current file action mode.  Type <Control-N> followed by a key to
+see what would happen with that key command.
 
 Here's a summary of the modes in the supplied configuration, with the
 keys to enter and exit each mode:
@@ -251,7 +259,7 @@ do	?	Special action is taken depending on the nature of the
 expand	"	Selected directories are expanded in the file listing,
 		or collapsed if they're already expanded.
 
-----------------------------  MAILING LIST  ----------------------------
+------------------------- ADDITIONAL RESOURCES -------------------------
 
 A web forum and mailing list for discussion, support and announcements
 regarding vshnu is available at
@@ -260,10 +268,14 @@ regarding vshnu is available at
 
 You needn't subscribe to this list to read or post to it.
 
+A Japanese review and showcase of vshnu was published in the September
+2001 issue of Linux Magazine <http://www.ascii.co.jp/linuxmag/>,
+pages 124-125.
+
 ---------------------------  GPL COPYRIGHT  ----------------------------
 
 vshnu: the New Visual Shell
-Copyright (C) 1999-2000 Stephen B Kinzler
+Copyright (C) 1999-2002 Stephen B Kinzler
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -298,6 +310,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler
+http://www.cs.indiana.edu/~kinzler		      revised March 2002
 
 Your feedback is welcome!

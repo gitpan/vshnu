@@ -1,8 +1,5 @@
 #!/usr/bin/perl
 
-#$tmpcwd = '';	# uncomment these two lines if not using shell integration
-#$tmpenv = '';
-
 # .vshnurc - personal extra vshnu configuration file
 # Steve Kinzler, kinzler@cs.indiana.edu, Oct 00
 # see website http://www.cs.indiana.edu/hyplan/kinzler/vshnu/
@@ -16,7 +13,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0007 1.0010);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0100 1.0100);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
      "($cfg::version)") if $rc::require != $cfg::version;
@@ -28,6 +25,12 @@
 # 1.0005  26 Jan 2001	Appended "=yes" to "--color"s
 # 1.0006  27 Apr 2001	Improved Slashdot interface
 # 1.0007  29 May 2001	Added "go perl:" option to G command
+# 1.0008  05 Jul 2001	Added "go user:", "webdaily", etc options to G command
+# 1.0009  01 Aug 2001	Added "go news:" option to G command
+# 1.0010  20 Aug 2001	Updated Slashdot interface; added "hmrccal"; B -> GB
+# 1.0011  29 Oct 2001	Added "go movie:" option to G command
+# 1.0012  14 Feb 2002	Added "go book:" option to G command
+# 1.0100  29 Mar 2002	Added mail, download and print menu to default do entry
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -56,6 +59,10 @@ delete $co_user{$user}, @co_user{'kinzler', 'oracle',  'uoracle'} =
 
 $typemap_{''}[0] = 'sh $cfg::editor, "--", $_; winch';
 
+$typemap_{  '/(^|\/)_[^_].*\.mbox$/'} = $typemap_do{'/(^|\/|\.)mbox$/'};
+$typemap_do{'/(^|\/)_[^_].*\.mbox$/'} = $typemap_{''};
+
+$rc::retrm = '; ret("Remove?") && remove $_; winch';
 (@{$typemap_do{'-d _'}[0]}[0,3], @{$typemap_do{'-d _'}[1]}[0,3]) =
 	('shell "lls", opt("L") ? "-L" : (), "-R --color=yes -- $_q |'
 	 . ' $cfg::pagerr"; winch', 'lls -R',
@@ -63,32 +70,48 @@ $typemap_{''}[0] = 'sh $cfg::editor, "--", $_; winch';
 	 . ' $cfg::pagerr"; winch', 'tls');
 $typemap_do{'/\.e?ps$/i'} =
 	[['xshell "ghostview $_q"; win',
-	  'display this PostScript file',	   'vVgG', 'view'],
+	  'display this PostScript file',	   'vVgG',  'view'],
 	 ['sh "lpr", "-h", $_; ret; winch',
-	  'print this PostScript file',		   'pPlL', 'print'],
+	  'print this PostScript file',		   'pPlL',  'print'],
 	 ['sh "psduplex $_q | lpr -h"; ret; winch',
-	  'print this PostScript file duplex',	   'dD',   'print duplex'],
+	  'print this PostScript file duplex',	   'dD',    'print duplex'],
 	 ['sh "psnup -n2 $_q | lpr -h"; ret; winch',
-	  'print this PostScript file 2-up',	   '2nN',  'print 2-up'],
+	  'print this PostScript file 2-up',	   '2rRnN', 'print 2-up'],
 	 ['sh "psnup -n2 $_q | psduplex | lpr -h"; ret; winch',
 	  'print this PostScript file duplex 2-up', '4', 'print duplex 2-up']];
 $typemap_do{'/\.err$/'}	   = ['sh $cfg::editor, "-q", $_; winch',
 			      'quickfix edit based on this error file'];
 $typemap_do{'/\.html?$/i'} = ['sh "$ENV{HTMLVIEW} < $_q"; win',
 			      "browse this HTML file's contents"];
-$typemap_do{'/\.p(rc|db)$/i'} =
+$typemap_do{'/\.p(rc|db|qa)$/i'} =
 	[['shell "+palm; pilot-file -v -- $_q' . $cfg::page,
 	  'view a dump of this Palm file', 'vVfF', 'view'],
-	 ['shell "+palm; exec pilot-xfer -i $_q"; ret; winch',
+	 ['shell "+palm; exec pilot-xfer -i $_q"' . $rc::retrm,
 	  'download this file to a Palm',  'dDxX', 'download']];
 $typemap_do{'/\.url?$/'}    = ['sh "xrshio - webrowse -mw < $_q"; win',
 			       'browse this URL file marked up'];
-$typemap_do{'/^slashdot$/'} = ['sh "slashdot | xrshio - inbrowse -aw"; win',
-			       'browse the Slashdot articles list'];
 $typemap_do{'4; /[Mm]akefile/'}[0] = 'shell getcmd "mak -f $_q"; ret; winch';
 $typemap_do{'9; ! -f _'}	   = ['sh "stat", "--", $_; ret; winch',
 				      'run `stat` on this special file'];
-$typemap_do{''}[0]		   = 'sh $cfg::pager, "--", $_; winch';
+$typemap_do{''} =
+	 [['sh $cfg::pager, "--", $_; winch',
+	   'view this file',		       'vV',   'view'],
+	  ['sh "sendfile", $_' . $rc::retrm,
+	   'mail this message file',	       'mMsS', 'mail'],
+	  ['shell "+palm; install-memo /dev/pilot -- $_q"' . $rc::retrm,
+	   'download this memo to a Palm',     'iI',   'download memo'],
+	  ['sh "enscript", "-Gh", "--", $_' . $rc::retrm,
+	   'print this text file',	       'pl',   'print'],
+	  ['sh "enscript -Gh -p- -- $_q | psduplex | lpr -h"' . $rc::retrm,
+	   'print this text file duplex',      'd',    'print duplex'],
+	  ['sh "enscript", "-2rGh", "--", $_' . $rc::retrm,
+	   'print this text file 2-up',	       '2rn',  'print 2-up'],
+	  ['sh "enscript -2rGh -p- -- $_q | psduplex | lpr -h"' . $rc::retrm,
+	   'print this text file duplex 2-up', '4',    'print duplex 2-up'],
+	  ['sh "mailp", "-F", "-h", "--", $_' . $rc::retrm,
+	   'print this mail file',	       'PL',   'print mail'],
+	  ['sh "mailp", "-F", "-l", "-h", "--", $_' . $rc::retrm,
+	   'print this mail file 2-up',	       'RN',   'print mail 2-up']];
 
 ###############################################################################
 ## Main keymap reconfiguration ################################################
@@ -111,8 +134,6 @@ $keymap_{"\cV"}[0] = 'msg "$vname $version; $cfg::vname $cfg::version;'
 $keymap_{","}	   = ['evalnext \@rc::ring', 'cycle to monitored directories'];
 $keymap_{"A"}	   = ['longls "-win", "getfacls --"',
 		      'long list files with their Solaris ACL info'];
-$keymap_{"B"}	   = ['sh "grepbm", "-b", "-i", "--", gets "Regexp:"; winch',
-		      'browse the matched browser bookmarks'];
 $keymap_{"C"}	   = ['longls "-win", "listacls"',
 		      'long list files with their AFS ACL info'];
 $keymap_{"G"}	   =
@@ -122,27 +143,48 @@ $keymap_{"G"}	   =
 	 ['sh "go", "url:" . gets "Go URL:"; winch',
 	  'browse the given URL',
 	  'uUkK', 'url (including Netscape Internet Keywords)'],
+	 ['sh "grepbm", "-b", "-i", "--", gets "Go Regexp:"; winch',
+	  'browse the matched browser bookmarks',
+	  'bB',   'bookmarks'],
 	 ['sh "go", "search:" . gets "Go Search:"; winch',
 	  'browse the results for the given web search query',
 	  'sS',   'search (Google)'],
+	 ['sh "go", "news:" . gets "Go News:"; winch',
+	  'browse the results for the given usenet search query',
+	  'nN',   'news (Google Groups)'],
 	 ['sh "go", "ask:" . gets "Go Ask:"; winch',
 	  'browse the matches for the given question',
-	  'aAjJ', 'ask (AskJeeves)'],
+	  'aAjJ', 'ask (Ask Jeeves)'],
 	 ['sh "go", "topic:" . gets "Go Topic:"; winch',
 	  'browse the matches for the given topic',
 	  'tTyY', 'topic (Yahoo)'],
 	 ['sh "go", "encyc:" . gets "Go Encyclopedia:"; winch',
 	  'browse the results for the given encyclopedia query',
-	  'eEbB', 'encyclopedia (Brittanica)'],
+	  'eE',   'encyclopedia (Columbia Concise)'],
 	 ['sh "go", "word:" . gets "Go Word:"; winch',
 	  'browse the results for the given dictionary query',
 	  'wW',   'word (Dictionary)'],
 	 ['sh "go", "perl:" . gets "Go Perl:"; winch',
 	  'browse the results for the given perl documentation query',
 	  'pP',   'perl (Perldoc)'],
+	 ['sh "go", "user:" . gets "Go User:"; winch',
+	  'browse the results for the given user directory query',
+	  'iI',   'user (U-M Directory)'],
+	 ['sh "go", "book:" . gets "Go Book:"; winch',
+	  'browse the results for the given bookstore query',
+	  'zZ',   'book (Amazon)'],
+	 ['sh "go", "movie:" . gets "Go Movie:"; winch',
+	  'browse the results for the given movie database query',
+	  'mM',   'movie (IMDb)'],
 	 ['sh "webrowse", "-w", getfile("Go File (.):") || $cwd; winch',
 	  'browse the given file or directory (default current directory)',
-	  'fFdD', 'file (default current directory)']];
+	  'fF',   'file (default current directory)'],
+	 ['sh "slashdot"; winch', 'browse the Slashdot website',
+	  '/?.'],
+	 ['sh "hmrccal"; winch', 'browse the HMRC calendar',
+	  'cChH'],
+	 ['sh "webdaily", "-v"; winch', 'browse my daily web pages',
+	  'dD']];
 $keymap_{"J"}	 =
 	[['sh "snaps -u' . $cfg::page,
 	  "list the user's current processes",	    'ujJ', 'user'],
@@ -154,8 +196,6 @@ $keymap_{"J"}	 =
 	  'tree list all system processes',	    'S',   'system tree']];
 $keymap_{"M"}[0] = 'shell getcmd "mak"; ret; winch';
 $keymap_{"N"}	 = ['sh "nn"; winch', 'run `nn`'];
-$keymap_{"S"}	 = ['sh "slashdot update"; ' . $typemap_do{'/^slashdot$/'}[0],
-		    'update and ' . $typemap_do{'/^slashdot$/'}[1]];
 $keymap_{"^"}	 = ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
 		 .  ' point "-\$"; win',
 		    "cd to the user's working directory"];

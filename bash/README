@@ -1,0 +1,38 @@
+The files in this directory can be installed and merged into your home
+directory Unix environment to implement an integration between a bash
+command line shell and a vshnu visual shell (as a sort of supplemental
+visual mode to bash).
+
+Each file here contains its own instructions on what to do with and
+about it.  "vshnu-bash" implements the entire integration between vshnu
+and bash.
+
+Here's some notes from Marc Schaefer <marc_schaefer@gmx.de>,
+the author of vshnu-bash:
+
+	The script is self contained, installation is described in
+	the comments preceding the code. It differs from the tcsh
+	implementation in the following respects:
+
+	* I want to use it in a multiuser environment where I do not
+	  trust everybody, so the idea of writing to files with easily
+	  predictable names in public directories does not really
+	  appeal to me. vshnu-bash therefore creates one directory in
+	  the temporary directory ($TEMP, $TMPDIR or /tmp, if none of
+	  the vars is set) per shell to store the current directory and
+	  the environment in.
+
+	* [...] vshnu-bash a) keeps track of the PID of its vshnu and thus
+	  is not confused if I start other processes with names starting
+	  with vshnu and b) checks on every invocation whether this
+	  process is still running and (if necessary) starts a new one.
+
+	  The downside of this is that the check takes some time.
+
+	* It is a kludge, but not as well tested as tcsh's. Actually,
+	  until now it only Works For Me (TM). Bug reports welcome :)
+
+========================================================================
+
+Steve Kinzler <kinzler@cs.indiana.edu>			      March 2002
+http://www.cs.indiana.edu/~kinzler

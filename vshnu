@@ -4,9 +4,6 @@ BEGIN { unshift @INC, "$ENV{'HOME'}/libp/perl", "$ENV{'HOME'}/lib/perl",
 
 $default_vshnucfg = '';
 
-$tmpcwd = "/tmp/vsh$$";
-$tmpenv = "/tmp/env$$";
-
 $debug	  = 0;
 $debug_ch = 0;
 
@@ -18,15 +15,25 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0010);
+($vname, $version) = qw(vshnu 1.0100);
 
 # 1.0000  07 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
 # 1.0005  26 Jan 2001	Use most specific LS_COLORS match
 # 1.0010  02 Jul 2001	Improved function key support
+# 1.0013  27 Mar 2002	Use VSHNUTMP to enable tmp files and specify location
+# 1.0100  29 Mar 2002	Recognize VSHNUCWD and VSHNUENV for tmp file basenames
 
 ###############################################################################
 ## Initial setup ##############################################################
+
+$tmpcwd = (! defined $ENV{'VSHNUTMP'}) ? '' :
+	  (($ENV{'VSHNUTMP'} ne '') ? $ENV{'VSHNUTMP'}    : '/tmp') .
+	  (($ENV{'VSHNUCWD'} ne '') ? "/$ENV{'VSHNUCWD'}" : "/vsh$$");
+$tmpenv = (! defined $ENV{'VSHNUTMP'}) ? '' :
+	  (($ENV{'VSHNUTMP'} ne '') ? $ENV{'VSHNUTMP'}    : '/tmp') .
+	  (($ENV{'VSHNUENV'} ne '') ? "/$ENV{'VSHNUENV'}" : "/env$$");
+$tmpcwd =~ s:/+:/:g; $tmpenv =~ s:/+:/:g;
 
 require 5.002;
 
@@ -1437,18 +1444,20 @@ sub pipeto {
 sub tstp { &stop('tstp') }
 
 sub stop {
-	&wtmpcwd();
+	&wtmpcwd()  if $tmpcwd;
 	&bakescr(1) unless $_[0] eq 'tstp';
 	kill 'STOP', $$;
 	&bakescr()  unless $_[0] eq 'tstp';
 	my $nwd;
-	($nwd = &rtmpcwd()) ne $cwd && &cd($nwd), unlink $tmpcwd if -e $tmpcwd;
-	do $tmpenv, $@ && &err($@),		  unlink $tmpenv if -e $tmpenv;
+	($nwd = &rtmpcwd()) ne $cwd && &cd($nwd), unlink $tmpcwd
+		if $tmpcwd && -e $tmpcwd;
+	do $tmpenv, $@ && &err($@),		  unlink $tmpenv
+		if $tmpenv && -e $tmpenv;
 }
 
 sub quit {
-	&onquit() if defined &onquit;
-	&wtmpcwd();
+	&onquit()  if defined &onquit;
+	&wtmpcwd() if $tmpcwd;
 	&bakescr(1);
 	undef $scr;
 	undef $rl;

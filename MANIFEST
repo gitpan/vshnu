@@ -2,6 +2,8 @@ COPYING
 MANIFEST
 Makefile.PL
 README
+bash/README
+bash/vshnu-bash
 libperl/Term/ANSIColor
 libperl/Term/Screen
 tcsh/README

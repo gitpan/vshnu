@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0010',	# package version
+	VERSION		=> '1.0100',	# package version
 					# also ../*.html, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
@@ -10,8 +10,8 @@ WriteMakefile (
 #	URL		=> 'http://www.cs.indiana.edu/hyplan/kinzler/vshnu/',
 	EXE_FILES	=> ['vshnu'],
 	PM		=> {'vshnucfg.pl' => '$(INST_LIBDIR)/vshnucfg.pl'},
-	PREREQ_PM	=> {'Term::Screen'    => '1.00',
-			    'Term::ANSIColor' => '1.03'},
+	PREREQ_PM	=> {'Term::Screen'    => '0',
+			    'Term::ANSIColor' => '0'},
 	dist		=> {COMPRESS => 'gzip -9f', SUFFIX => '.gz',
 			    POSTOP   => 'mv $(DISTVNAME)* ..'},
 );
@@ -27,6 +27,10 @@ WriteMakefile (
 # 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
 # 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
 # 1.0010  02 Jul 2001	Improved function key support and definitions
+# 1.0011  19 Oct 2001	Added `md5sum` long listing
+# 1.0012  01 Feb 2002	Added viewing actions for SSL files
+# 1.0013  27 Mar 2002	Use VSHNUTMP to enable tmp files and specify location
+# 1.0100  29 Mar 2002	Use VSHNUCWD and VSHNUENV; Added bash integration
 
 sub MY::postamble { q~
 import:

@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# vshnu-bash - VSHNU<->BASH INTEGRATION
+#
+# written by Marc Schaefer, marc_schaefer@gmx.de, Sep 01
+# to be distributed under the same terms as vshnu
+# some vshnu 1.0100 and Solaris compatability tweaks by
+#   Steve Kinzler, kinzler@cs.indiana.edu, Mar 02
+#
+# To use, put vshnu-bash into your path and add the following lines to
+# your .bashrc
+#
+#	alias v=". vshnu-bash; vshnu_invoke v"
+#	alias vv=". vshnu-bash; vshnu_invoke vv"
+#
+# Then v starts vshnu / returns to a suspended vshnu in your current
+# directory, while vv starts vshnu or returns to a suspended vshnu in
+# the directory you were last in.
+#
+# This code aliases exit to kill a suspended vshnu without warnings
+# when terminating the shell.
+
+function vshnu_set_dir() {
+
+  # Unless $VSHNUTMP is set, creates a directory in $TEMP,
+  # $TMPDIR or /tmp which belongs to ME and to ME ALONE!
+  # BUHAAHAHAHA!
+
+  local COUNTER
+  local TEMP=`echo ${TEMP:-${TMPDIR:-/tmp}} | sed -e "s/\\/$//"`
+  if [ ! -e "$VSHNUTMP" ]; then
+    COUNTER=0
+    # use %m%d%H%M%S instead of original %s for Solaris,etc compat -kinzler
+    VSHNUTMP=$TEMP/vshnu.$$.`date +%m%d%H%M%S`
+    until mkdir -m 700 $VSHNUTMP &>/dev/null; do
+      (( COUNTER = COUNTER + 1 ))
+      VSHNUTMP=$TEMP/vshnu.$$.`date +%m%d%H%M%S`.$COUNTER
+      if [ $COUNTER -ge 10 ]; then
+	echo "vshnu_bash: Unable to create temporary directory in $TEMP."
+	return 1
+      fi
+    done
+    trap "rm -rf $VSHNUTMP" EXIT
+    VSHNUCWD=curdir; VSHNUENV=env
+    export VSHNUTMP VSHNUCWD VSHNUENV
+  fi
+  return 0
+}
+
+function vshnu_job_from_pid () {
+
+  # prints the job no corresponding to the given pid
+
+  jobs -l | sed -n "s/^\\[\\([0-9]\\)\\][+-] *$1.*\$/\\1/p"
+}
+
+function vshnu_start() {
+
+  # starts vshnu unless there is a vshnu job running
+  # sets VSHNUPID and VSHNUJOB as a side effect
+
+  vshnu_set_dir || return 1;
+
+  if [ -z "$VSHNUPID" -o -z "`vshnu_job_from_pid $VSHNUPID`" ]; then
+    { vshnu & }
+    VSHNUPID=$!
+  fi
+
+  VSHNUJOB=`vshnu_job_from_pid $VSHNUPID`
+  return 0
+}
+
+function vshnu_set_environ {
+
+  # Propagates the current directory and the current environment
+  # to vshnu
+
+  vshnu_set_dir
+  echo `pwd` >$VSHNUTMP/curdir
+  perl -MData::Dumper -e "print '%ENV=%{' . Dumper(\%ENV) . '}'" >$VSHNUTMP/env
+}
+
+function vshnu_restore_cwd {
+
+  # Called by $PROMPT_COMMAND to propagate directory changes from
+  # vshnu to bash
+
+  vshnu_set_dir
+  if [ -e "$VSHNUTMP/curdir" ]; then
+    cd `cat $VSHNUTMP/curdir`
+  fi
+}
+
+function vshnu_future_restore_cwd {
+  PROMPT_COMMAND='vshnu_restore_cwd; unset PROMPT_COMMAND'
+}
+
+function vshnu_kill_on_exit {
+
+  # Kills vshnu if there is a stopped one.
+
+  if [ -n "$VSHNUPID" -a -n "`vshnu_job_from_pid $VSHNUPID`" ]; then
+    kill %`vshnu_job_from_pid $VSHNUPID`
+  fi
+}
+
+function vshnu_invoke {
+  vshnu_start || return
+  if [ "$1" = "v" ]; then
+    vshnu_set_environ
+  fi
+  vshnu_future_restore_cwd
+  %$VSHNUJOB
+}
+
+unset VSHNUTMP
+unset VSHNUPID
+
+alias v="vshnu_invoke v"
+alias vv="vshnu_invoke vv"
+
+alias exit="vshnu_kill_on_exit; exit"

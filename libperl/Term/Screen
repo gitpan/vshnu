@@ -3,7 +3,11 @@
 
 package Term::Screen;
 
-$VERSION = 1.00;
+use strict;
+
+use vars qw($VERSION);
+
+$VERSION = '1.01';
 
 =head1 NAME
 
@@ -204,7 +208,13 @@ Tells getch NOT to echo input to the screen.
 
 =head1 AUTHOR
 
-Term/Screen.pm by Mark Kaehny (kaehny@execpc.com)
+Term::Screen.pm by Mark Kaehny (kaehny@execpc.com)
+Currently maintained by Jonathan Stowe <jns@gellyfish.com>
+
+=head1 LICENSE AND COPYRIGHT
+
+Please see the README file in the distribution kit for the license details
+for this module.
 
 =head1 SEE ALSO
 
@@ -256,7 +266,7 @@ sub at
   if ($c < 0) {$c = 0;}
   if ($r >= $this->{ROWS}) {$r = $this->{ROWS}-1;}
   if ($c >= $this->{COLS}) {$c = $this->{COLS}-1;}
-  $this->{TERM}->Tgoto('cm', $c, $r, STDOUT);
+  $this->{TERM}->Tgoto('cm', $c, $r, *STDOUT);
   $this;
 }
 
@@ -294,28 +304,28 @@ sub resize
 sub normal 
 {
   my $this = shift;
-  $this->{TERM}->Tputs('me',1,STDOUT);
+  $this->{TERM}->Tputs('me',1,*STDOUT);
   $this;
 }
 
 sub bold
 {
   my $this = shift;
-  $this->{TERM}->Tputs('md',1,STDOUT);
+  $this->{TERM}->Tputs('md',1,*STDOUT);
   $this;
 }
 
 sub reverse
 {
   my $this = shift;
-  $this->{TERM}->Tputs('mr',1,STDOUT);
+  $this->{TERM}->Tputs('mr',1,*STDOUT);
   $this;
 }
 
 sub clrscr
 {
   my $this = shift;
-  $this->{TERM}->Tputs('cl',1, STDOUT);
+  $this->{TERM}->Tputs('cl',1, *STDOUT);
   $this->{'rc'} = [0,0];
   $this;
 }
@@ -325,7 +335,7 @@ sub clreol
   my $this = shift;
   if (exists ($this->{TERM}->{'_ce'})) 
   {
-    $this->{TERM}->Tputs('ce',1,STDOUT);
+    $this->{TERM}->Tputs('ce',1,*STDOUT);
   }
   $this
 }
@@ -335,7 +345,7 @@ sub clreos
   my $this = shift;
   if (exists ($this->{TERM}->{'_cd'})) 
   {
-    $this->{TERM}->Tputs('cd',1,STDOUT);
+    $this->{TERM}->Tputs('cd',1,*STDOUT);
   }
   $this;
 }
@@ -343,14 +353,14 @@ sub clreos
 sub il
 {
   my $this = shift;
-  $this->{TERM}->Tputs('al', 1, STDOUT);
+  $this->{TERM}->Tputs('al', 1, *STDOUT);
   $this;
 }
 
 sub dl
 {
   my $this = shift;
-  $this->{TERM}->Tputs('dl',1, STDOUT);
+  $this->{TERM}->Tputs('dl',1, *STDOUT);
   $this;
 }
 
@@ -359,7 +369,7 @@ sub ic_exists { ( exists ($_[0]->{TERM}{'ic'}) ? 1 : 0 ); }
 sub ic
 {
   my $this = shift;
-  $this->{TERM}->Tputs('ic',1, STDOUT);
+  $this->{TERM}->Tputs('ic',1, *STDOUT);
   $this;
 }
 
@@ -368,7 +378,7 @@ sub dc_exists { ( exists ($_[0]->{TERM}{'dc'}) ? 1 : 0 ); }
 sub dc
 {
   my $this = shift;
-  $this->{TERM}->Tputs('dc',1, STDOUT);
+  $this->{TERM}->Tputs('dc',1, *STDOUT);
   $this;
 }
 

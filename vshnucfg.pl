@@ -13,7 +13,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0010 1.0003);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0100 1.0003);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
@@ -27,6 +27,9 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
 # 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
 # 1.0010  02 Jul 2001	Defined some function keys for navigation
+# 1.0011  19 Oct 2001	Added `md5sum` long listing
+# 1.0012  01 Feb 2002	Added viewing actions for SSL files
+# 1.0100  29 Mar 2002	Moved Y command to U, added Y as tree list cwd
 
 ###############################################################################
 ## External configuration #####################################################
@@ -162,7 +165,8 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    ['shell "tree -aAC", opt("L") ? "-l" : (), "$_q |'
 		     . ' $cfg::pagerr"; winch',
 		     'tree list this directory',	     'tT', 'tree']],
-'/(^|\.)mbox$/'	=> ['sh "mail", "-f", $_; winch',
+'/(^|\/|\.)mbox$/'
+		=> ['sh "mail", "-f", $_; winch',
 		    'run `mail` on this mailbox file'],
 '/\.(\d\w?|man)$/'
 		=> ['sh "nroff -man < $_q | $cfg::pagerr"; winch',
@@ -181,10 +185,16 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'load this file into StarOffice'],
 '/\.(wr|vrm)l(\.g?[Zz])?$/'
 		=> ['xshell "vrweb $_q"; win', 'display this VRML file'],
-'/\.a$/'	=> ['sh "ar tv -- $_q' . $cfg::page,
+'/\.a$/'	=> ['sh "ar tv $_q' . $cfg::page,
 		    'list the contents of this archive'],
 '/\.aif[cf]?$/' => ['xshell "xplay -stay $_q"; win',
 		    'play this AIFF audio file'],
+'/\.crl$/'	=> ['sh "openssl crl -noout -text -in $_q' . $cfg::page,
+		    'view this SSL certificate revocation list'],
+'/\.crt$/'	=> ['sh "openssl x509 -noout -text -in $_q' . $cfg::page,
+		    'view this SSL certificate'],
+'/\.csr$/'	=> ['sh "openssl req -noout -text -in $_q' . $cfg::page,
+		    'view this SSL certificate signing request'],
 '/\.dvi$/'	=> ['xshell "xdvi $_q"; win', 'display this DVI file'],
 '/\.e?ps$/i'	=> ['xshell "ghostview $_q"; win',
 		    'display this PostScript file'],
@@ -192,11 +202,15 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'load this figure file into `xfig`'],
 '/\.jar$/'	=> ['sh "unzip -l -- $_q' . $cfg::pagea,
 		    'list the contents of this Java archive'],
+'/\.key$/'	=> ['sh "openssl rsa -noout -text -in $_q' . $cfg::page,
+		    'view this SSL private key'],
 '/\.lyx$/'	=> ['xshell "lyx $_q"; win', 'load this file into LyX'],
 '/\.mp3$/'	=> ['xshell "mxaudio $_q"; win', 'play this MP3 audio file'],
 '/\.o$/'	=> ['sh "nm -- $_q' . $cfg::page,
 		    'view the name list of this object file'],
 '/\.pdf$/i'	=> ['xshell "acroread $_q"; win', 'display this PDF file'],
+'/\.prm$/'	=> ['sh "openssl dsaparam -noout -text -in $_q' . $cfg::page,
+		    'view this SSL parameter file'],
 '/\.ram?$/'	=> ['xshell "realplay -- $_q"; win',
 		    'play this RealAudio file'],
 '/\.rpm$/'	=> [['sh "rpm -qisp -- $_q' . $cfg::page,
@@ -220,7 +234,7 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    ['sh "tar -xpvf $_q' . $cfg::page,
 		     'extract this entire tar archive',
 		     'xX',   'extract all']],
-'/\.uu$/'	=> [['sh "uudecode -p -- $_q' .$cfg::page,
+'/\.uu$/'	=> [['sh "uudecode -p -- $_q' . $cfg::page,
 		     'view this uuencoded file',    'vVpP', 'view'],
 		    ['sh "uudecode -- $_q"; ret; winch',
 		     'extract this uuencoded file', 'xX',   'extract']],
@@ -231,7 +245,8 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 '/\.xwd$/'	=> ['xshell "xwud -in $_q"; win', 'display this window dump'],
 '/\.zip$/i'	=> ['sh "unzip -l -- $_q' . $cfg::pagea,
 		    'list the contents of this zip archive'],
-'/^Imakefile$/'	=> ['shell getcmd "xmkmf"; ret; winch',
+'/(^|\/)Imakefile$/'
+		=> ['shell getcmd "xmkmf"; ret; winch',
 		    'run `xmkmf` which will use this Imakefile'],
 '4; /[Ii]makefile/'
 		=> ['shell getcmd "imake -f $_q"; ret; winch',
@@ -331,6 +346,8 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'switch to/from the third file set display'],
 "4"	=> ['altls \@cfg::set4, "File Set 4"; win',
 	    'switch to/from the fourth file set display'],
+"5"	=> ['longls "-win", "md5sum -- \@_ 2>&1"',
+	    'long list files with their `md5sum` output'],
 "9"	=> ['helpmarks $cfg::pagerr; winch', 'list the defined marks'],
 ":"	=> ['shellp getshell "Shell:"; ret; winch',
 	    'run a shell (or ;perl) command, leaving output'],
@@ -345,15 +362,17 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "F"	=> ['longls "-win", "file", opt("L") ? "-L" : (), "--"',
 	    'long list files with their `file` output'],
 "L"	=> ['longls "-win", "+1"',
-	    'long list files with their stat(2) info, repeat for more'],
+	    'long list files with their stat info, repeat for more'],
 "M"	=> ['shell getcmd "make"; ret; winch',
 	    'run `make` with the given arguments'],
 "O"	=> ['keymap "opts"', 'push to option key mode'],
 "P"	=> ['longls "-win", "rpm -qf -- \$_ 2>&1"',
 	    'long list files with their owning RPM package'],
 "T"	=> ['sh "top -S"; winch', 'run `top -S`'],
+"U"	=> ['shell getcmd "man"; winch', 'run `man` with the given arguments'],
 "V"	=> ['stop; winch', 'suspend to the master shell'],
-"Y"	=> ['shell getcmd "man"; winch', 'run `man` with the given arguments'],
+"Y"	=> ['sh "tree -aAC . | $cfg::pagerr"; winch',
+	    'tree list the current directory'],
 "["	=> ['expand "expand", $point; win', 'expand the point file'],
 "\\"	=> ['cdhist "back"; win', 'cd back to the prior directory'],
 "]"	=> ['expand "collapse", $point; win', 'collapse the point file'],
