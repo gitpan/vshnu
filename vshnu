@@ -16,29 +16,42 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0115);
+($vname, $version) = qw(vshnu 1.0128);
 
-# 1.0000  07 Nov 2000	Initial public release
+# 1.0000   7 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
 # 1.0005  26 Jan 2001	Use most specific LS_COLORS match
-# 1.0010  02 Jul 2001	Improved function key support
+# 1.0010   2 Jul 2001	Improve function key support
 # 1.0013  27 Mar 2002	Use VSHNUTMP to enable tmp files and specify location
 # 1.0100  29 Mar 2002	Recognize VSHNUCWD and VSHNUENV for tmp file basenames
-# 1.0101  01 Apr 2002	Added ifopt and unlessopt utility subs
-# 1.0102  03 Apr 2002	Fixed bug in ifopt and unlessopt for older perls
-# 1.0103  16 Apr 2002	Added "use Data::Dumper" and &vardump
+# 1.0101   1 Apr 2002	Add ifopt and unlessopt utility subs
+# 1.0102   3 Apr 2002	Fix bug in ifopt and unlessopt for older perls
+# 1.0103  16 Apr 2002	Add "use Data::Dumper" and &vardump
 # 1.0104  23 Apr 2002	Report $! errors from &sh and &shell
-# 1.0105  14 Jun 2002	Added $stty_cooked and $stty_raw
+# 1.0105  14 Jun 2002	Add $stty_cooked and $stty_raw
 # 1.0106  25 Nov 2002	Support non-ANSI non-color terminals
-# 1.0107  23 Jan 2003	Fixed readline for prompts w/ non-visible characters
+# 1.0107  23 Jan 2003	Fix readline for prompts w/ non-visible characters
 # 1.0108   4 Jun 2003	Include ~/perl in @INC; Use HOSTNAME if no HOST
-# 1.0109  11 Jun 2003	Fixes for non-Gnu ReadLines; versions support
+# 1.0109  11 Jun 2003	Fixes for non-Gnu ReadLines; Versions support
 # 1.0110  13 Jun 2003	Use only one ReadLine instance, fix history doubling
 # 1.0111  18 Jun 2003	Fixes for perl 5.8 safe signals and Gnu ReadLine resize
 # 1.0112  19 Jun 2003	Suppress consecutive duplicates in readline histories
 # 1.0113   1 Jul 2003	Suppress any program name label from long listings
-# 1.0114   2 Jul 2003	Added insert-vshnu-chosen Gnu ReadLine function
+# 1.0114   2 Jul 2003	Add insert-vshnu-chosen Gnu ReadLine function
 # 1.0115   3 Jul 2003	Use Sys::Hostname if no HOST or HOSTNAME
+# 1.0116   8 Jul 2003	Propogate @choose to shell; -V command line flag
+# 1.0117  10 Jul 2003	Fix &long bug for @_ longls's on empty file sets
+# 1.0118  11 Jul 2003	Use optional Filesys::DiskFree and add &disks
+# 1.0119  11 Jul 2003	Separate ReadLine histories for shells, files, etc
+# 1.0120   4 Dec 2003	Use LS_COLORS2 (appended to LS_COLORS) if available
+# 1.0121   3 Jun 2004	View trailing spaces in filenames; Add &diskdevs
+# 1.0122   4 Jun 2004	Add &longtrunc for truncation function spec/toggle
+# 1.0123   7 Jun 2004	Add &pwd and &diskspace; Enhanced &getmark
+# 1.0124  29 Jun 2004	Generalize insert-vshnu-chosen to insert-vshnu
+# 1.0125   2 Nov 2004	Add $_f and $_fq dotype variables for full pathnames
+# 1.0126  27 Nov 2004	Add &filecounts and &filecount
+# 1.0127  28 Nov 2004	Color file paths as directories; Add sort bydepth
+# 1.0128  31 Jan 2005	Add &expand, &collapse and &expandtoggle aliases
 
 ###############################################################################
 ## Modules setup ##############################################################
@@ -56,14 +69,79 @@ require 5.002;
 use	Config;
 use	Sys::Hostname;
 eval	'use Data::Dumper';
-use	Term::ReadLine;	# setenv PERL_RL {Gnu,Perl,false}, dflt best available
+eval	'use Filesys::DiskFree';
 
 require Term::Screen;
 use	Term::ANSIColor;
 
-die "usage: $0 [ dir ... ]\nVersion $version\n" if $ARGV[0] eq '-h';
-print("$version\n"), exit			if $ARGV[0] eq '-v';
-die "$0: stdin not a tty\n"			unless -t;
+use	Term::ReadLine;	# setenv PERL_RL {Gnu,Perl,false}, dflt best available
+
+print("$version\n"), exit    if $ARGV[0] eq '-v';
+$ARGV_V = 1, @ARGV = ()	     if $ARGV[0] eq '-V';
+die "usage: $0 [ -v | -V | [ -- ] dir ... ]\nVersion $version\n"
+			     if $ARGV[0] =~ /^-/ && $ARGV[0] ne '--';
+die "$0: stdin not a tty\n"  unless -t;
+shift @ARGV if $ARGV[0] eq '--';
+
+&winch_off();
+$rl = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
+&winch_on();
+($rlmodule = $rl->ReadLine) =~ s/.*Term::ReadLine:://;
+$rl->ornaments(0)				  if $rlmodule =~ /^Stub/i;
+$rl->add_defun('insert-vshnu', \&rl_insert_vshnu) if $rlmodule eq 'Gnu';
+@rlhist_ = @rlhist_shell = @rlhist_junk = @rlhist_file = ();
+
+sub rl_insert_vshnu {
+	&home(), $scr->clreos()	      if ref $$insertcmd[0];
+	my $text = join(' ', &quote(eval { &cmdeval($insertcmd) }));
+	$rl->insert_text($text . ' ') if $text ne '';
+	$rl->forced_update_display    if ref $$insertcmd[0];
+}
+
+sub rl_bind_insert_vshnu {
+	return unless $rlmodule eq 'Gnu';
+	$rl->parse_and_bind("$_[0]: insert-vshnu");
+}
+
+###############################################################################
+## Versions setup and subroutines #############################################
+
+@versions = (
+	'perl'			=> "$Config{'version'} $Config{'archname'}",
+	'Sys::Hostname'		=> $Sys::Hostname::VERSION,
+	'Data::Dumper'		=> $Data::Dumper::VERSION
+				|| 'NOT INSTALLED',
+	'Filesys::DiskFree'	=> $Filesys::DiskFree::VERSION
+				|| 'NOT INSTALLED',
+	'Term::Screen'		=> $Term::Screen::VERSION,
+	'Term::ANSIColor'	=> $Term::ANSIColor::VERSION,
+	'Term::ReadLine'	=> $rlmodule,
+	$rl->ReadLine		=> $rl->ReadLine->VERSION,
+($rlmodule ne 'Gnu') ? () :
+       ('GNU Readline Library'	=> $rl->Attribs->{'library_version'}),
+	'ReadLine Features'	=> join(' ', sort keys %{$rl->Features}),
+	$vname			=> $version);
+%versions = @versions;
+do { my $n = 1; @versions = grep { $n++ % 2 } @versions };
+
+sub addversions {
+	while (@_) {
+		push(@versions, $_[0]), $versions{$_[0]} = $_[1]
+			unless exists $versions{$_[0]};
+		shift; shift;
+	}
+}
+
+sub versions {
+	my @v = (@_) ? @_ : @versions;
+	my $fmt = '%' . &max(map { length($_) } @v) . 's %s';
+	join("\n", map { sprintf($fmt, $_, $versions{$_}) } @v) . "\n";
+}
+
+print(&versions()), exit if $ARGV_V;
+
+###############################################################################
+## Initial setup ##############################################################
 
 $ch   = $ch_list = $err = $stty_cooked = $stty_raw = ''; $cooked = 0;
 $path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
@@ -82,58 +160,6 @@ $normal  = $scr->{TERM}->Tputs('me', 1) ||
 map($ansicolor{$Term::ANSIColor::attributes{$_} + 0} = $_,
     keys %Term::ANSIColor::attributes);
 
-&winch_off();
-$rl = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
-&winch_on();
-($rlmodule = $rl->ReadLine) =~ s/.*Term::ReadLine:://;
-$rl->ornaments(0) if $rlmodule =~ /^Stub/i;
-$rl->add_defun('insert-vshnu-chosen', \&rl_insert_vshnu_chosen)
-		  if $rlmodule eq 'Gnu';
-
-sub rl_insert_vshnu_chosen {
-        $rl->insert_text(join(' ', &quote(@choose)) . ' ');
-}
-
-sub rl_bind_insert_vshnu_chosen {
-	return unless $rlmodule eq 'Gnu';
-	$rl->parse_and_bind("$_[0]: insert-vshnu-chosen");
-}
-
-###############################################################################
-## Versions setup and subroutines #############################################
-
-@versions = (
-	'perl'			=> "$Config{'version'} $Config{'archname'}",
-	'Sys::Hostname'		=> $Sys::Hostname::VERSION,
-	'Data::Dumper'		=> $Data::Dumper::VERSION,
-	'Term::Screen'		=> $Term::Screen::VERSION,
-	'Term::ANSIColor'	=> $Term::ANSIColor::VERSION,
-	'Term::ReadLine'	=> $rlmodule,
-	$rl->ReadLine		=> $rl->ReadLine->VERSION,
-($rlmodule ne 'Gnu') ? () :
-       ('GNU Readline Library'	=> $rl->Attribs->{'library_version'}),
-	'ReadLine Features'	=> join(' ', sort keys %{$rl->Features}),
-	$vname			=> $version);
-%versions = @versions;
-do { local($n) = 1; @versions = grep($n++ % 2, @versions); };
-
-sub addversions {
-	while (@_) {
-		push(@versions, $_[0]), $versions{$_[0]} = $_[1]
-			unless exists $versions{$_[0]};
-		shift; shift;
-	}
-}
-
-sub versions {
-	my @v = (@_) ? @_ : @versions;
-	my $fmt = '%' . &max(map { length($_) } @v) . 's %s';
-	join("\n", map { sprintf($fmt, $_, $versions{$_}) } @v) . "\n";
-}
-
-###############################################################################
-## Initial setup ##############################################################
-
 $user  = &uid2name($>);
 ($host = $ENV{'HOST'} || $ENV{'HOSTNAME'} ||
 	 eval { &hostname } || 'UNKNOWN') =~ s/\..*//;
@@ -141,7 +167,7 @@ $depth = 1;
 
 %keymap_ = ("\034" => ['last', 'quit $vname']);
 
-&setnorun('off'); &longlen('min'); $long = 0;
+&setnorun('off'); &longlen('min'); $long = 0; &longtrunc();
 require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
 		    ((-f "$ENV{'HOME'}/.vshnucfg") ? "$ENV{'HOME'}/.vshnucfg"
 						   : 'vshnucfg.pl'));
@@ -151,9 +177,15 @@ require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
 $mail = -f $mailbox;
 
 @cdhist = @cdhist || map({'ls' => $_}, @ARGV);
-(@cdhist) ? ($pwd = $cdhist[0]{'ls'}) : chomp($pwd = `pwd`);
+$pwd = (@cdhist) ? $cdhist[0]{'ls'} : &pwd();
 $pwd ne '' && &cd($pwd) or die "$0: cannot cd $pwd\n";
 undef $pwd;
+
+if ($insertkey ne '') {
+	&rl_bind_insert_vshnu($insertkey);	# Gnu ReadLine only
+	$keymap_{":$insertkey"} = $insertcmd	# only for help listing
+		if $insertcmd;
+}
 
 require "dumpvar.pl" if $debug;		# to enable &dumpvar(PACKAGE, VARS)
 					# and &dumpValue(DATAPTR)
@@ -375,7 +407,7 @@ sub win_bag {
 		($qfile, $qkey) = (&evalquote($file), &evalquote($key));
 		$qkey =~ s/^'?/$&\\/;
 		my $fill = sub { my @__ = @_;
-			grep { s/<FILE>/$qfile/g; s/<KEY>/$qkey/g; 1 } @__; };
+			grep { s/<FILE>/$qfile/g; s/<KEY>/$qkey/g; 1 } @__ };
 		foreach (keys %bagmap) {
 			my $act = $bagmap{$_};
 			$act = (! ref $act)	? [&$fill($act), ''] :
@@ -434,13 +466,16 @@ sub msg {
 
 sub viewfile {
 	my($file, $n) = @_;
-	my $f; my $tag = '';
+	my $f; my @f = (); my $tag = '';
 	$tag = &tag($file) if &opt('T');
 	$n-- if $tag;
-	$f = &view($file);
-	$f = ($f =~ /\//) ? join('', &truncm($f, $n)) : &trunc($f, $n)
+	$f =  &view($file);
+        $f =~ s/[\040\240]+$/join('', map { sprintf('\\%03o', ord($_)) }
+					  split(\/\/, $&))/e;
+	$f =  ($f =~ /\//) ? join('', @f = &truncm($f, $n)) : &trunc($f, $n)
 		if length($f) > $n;
-	((&opt('C') ? &colorfile($file, $f) : $f) . $tag, length($f . $tag));
+	((&opt('C') ? &colorfile($file, $f, @f) : $f) . $tag,
+	 length($f . $tag));
 }
 
 sub scrtruncr {
@@ -618,9 +653,13 @@ sub rl_prompt_mark_ignore {
 }
 
 sub colorfile {
-	my($file, $f) = @_;
+	my($file, $f, @f) = @_;
 	$f = $file if $f eq '';
-	&color($f, &filecolor($file));
+	return &color($f, &filecolor($file)) unless $file =~ /\//;
+	$f =~ /.*\//, @f = ($&, '', $')
+		if $file =~ s:/:/:g eq $f =~ s:/:/:g || $f[2] =~ /\//;
+	&color($f[0], &num2color($lscolors{'di'})) . $f[1] .
+	&color($f[2], &filecolor($file));
 }
 
 sub filecolor {
@@ -644,7 +683,7 @@ sub filecolor {
 	&num2color($lscolors{(-f _) ? 'fi' : 'no'});
 }
 
-sub bylengthr { length($b) <=> length($a); }
+sub bylengthr { length($b) <=> length($a) }
 
 sub num2color {
 	join(' ', map { $ansicolor{$_ + 0} } split(/;/, join(';', @_)));
@@ -652,7 +691,8 @@ sub num2color {
 
 sub lscolors {
 	%lscolors = ();
-	foreach (split(/:/, $ENV{'LS_COLORS'} || $ENV{'LS_COLOURS'})) {
+	foreach (split(/:/, ($ENV{'LS_COLORS'}  || $ENV{'LS_COLOURS'})
+			  . ($ENV{'LS_COLORS2'} || $ENV{'LS_COLOURS2'}))) {
 		next if $_ eq '';
 		my($k, $v) = split(/=/, $_, 2);
 		$lscolors{$k} = $v;
@@ -741,11 +781,11 @@ sub dotype {
 	local($_h, $_t);
 	(/\//) ? (($_h = $_) =~ s/\/([^\/]*)$//, $_t = $1) :
 		 ( $_h = '',			 $_t = $_);
-	local($_q, $_rq, $_eq, $_hq, $_tq) =
-		map { &quote($_) } ($_, $_r, $_e, $_h, $_t);
+	local $_f  = &absfile($_);
+	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq) =
+		map { &quote($_) } ($_, $_r, $_e, $_h, $_t, $_f);
 
-	my $f   = &absfile($_);
-	@dohist = ($f, grep($_ ne $f, @dohist)) unless -d;
+	@dohist = ($_f, grep($_ ne $_f, @dohist)) unless -d;
 	my $max = eval $maxdohist;
 	splice(@dohist, $max) if $max >= 0;
 	foreach $test (sort keys %$typemap) {
@@ -792,8 +832,8 @@ sub choosebyn {
 	&choose();
 }
 
-sub grepls { &myeval("grep { $_[0] } \@ls"); }
-sub lsall  { ($altls) ? @ls : grep { ! /^\.\.?$/ } @ls; }
+sub grepls { &myeval("grep { $_[0] } \@ls") }
+sub lsall  { ($altls) ? @ls : grep { ! /^\.\.?$/ } @ls }
 
 ###############################################################################
 ## File operation subroutines #################################################
@@ -822,6 +862,25 @@ sub remove {
 	&err('Cannot remove', join(', ', @bad)) if @bad;
 }
 
+sub filecounts {
+	my($d, $f, $l, $e) = (0) x 4;
+	foreach (&lsall()) {
+		&opt('L') ? stat $_ : lstat $_;
+		(! -e _) ? $e++ : (! &opt('L') && -l _) ? $l++ :
+		(  -d _) ? $d++ : $f++;
+	}
+	($d, $f, $l, $e);
+}
+
+sub filecount {
+	my @n = &filecounts();
+	join(', ', grep { ! /^0 / }
+			"$n[0] director" . (($n[0] == 1) ? 'y' : 'ies'),
+			"$n[1] file"	 . (($n[1] == 1) ? ''  : 's'),
+			"$n[2] symlink"	 . (($n[2] == 1) ? ''  : 's'),
+			"$n[3] non-existant");
+}
+
 ###############################################################################
 ## Change directory subroutines ###############################################
 
@@ -844,7 +903,7 @@ sub cd {
 	return 1 if $_ eq '';
 
 	$_ = &untilde($_);
-	$cwd || chomp($cwd = `pwd`), $_ = &absfile($_) unless /^\//;
+	$cwd ||= &pwd(), $_ = &absfile($_) unless /^\//;
 	1 while s:/\.(/|$):/:;
 	1 while s:(^|/[^/]+)/+\.\.(/|$):/:;
 	s:([^/])/+$:$1:;
@@ -867,6 +926,8 @@ sub cd {
 	&cmdeval($onsub{'cd'}) if exists $onsub{'cd'};
 	$cwd;
 }
+
+sub pwd { local $_; chomp($_ = `pwd`); $_ }
 
 sub cdrestore {
 	&page(1, 1, 1), &fileptr("-\$"), return unless my $p = shift;
@@ -908,8 +969,15 @@ sub setmark {
 	$mark{$mark} = {%{$cdhist[0]}};
 }
 
-sub getmark    { $mark{$_[0]} }
-sub clearmarks { %mark = ()   }
+sub getmark {
+	my $mark = exists $mark{$_[0]} ? $mark{$_[0]} : return undef;
+	return $mark->{'ls'}				  if $_[1] =~ /^d/i;
+	return $mark->{'file1'}				  if $_[1] =~ /^f/i;
+	return join('/', $mark->{'ls'}, $mark->{'file1'}) if $_[1] =~ /^p/i;
+	return $mark;
+}
+
+sub clearmarks { %mark = () }
 
 sub helpmarks {
 	return &pipeto(shift, "No marks are defined.\n") unless %mark;
@@ -958,6 +1026,7 @@ sub ls {
 
 	%sortcache = %sortcache2 = ();
 	@ls = &opt('f')			?		@ls :
+	      &opt('/')			? sort bydepth	@ls :
 	      &opt('F')			? sort bycolor	@ls :
 	      &opt('X')			? sort byext	@ls :
 	      &opt('m')			? sort bymode	@ls :
@@ -1025,7 +1094,7 @@ sub long {
 			push(@ret, &longfix(scalar `$c`, $_, $len));
 		}
 	} else {
-		my @r = `$cmd`;
+		my @r = (@_) ? `$cmd` : ();
 		foreach (@_) {
 			last if $_ eq '';
 			push(@ret, &longfix(shift @r, $_, $len));
@@ -1042,15 +1111,15 @@ sub longfix {
 	s/^\Q$label\E(:\s*|\s+)//mg;
 	s/\s+\Q$label\E$//mg;
 	s/\s*$//mg;
-	&trunc(&view(&expandtabs($_)), $len);
+	&{$longtrunc}(&view(&expandtabs($_)), $len);
 }
 
 sub longstr {
 	$! = 0;
 	my($Dev, $inode, $mode, $nlink, $uid, $gid, $Rdev, $size,
 	   $atime, $mtime, $ctime) = &opt('L') ? stat shift : lstat shift;
-	return &color(&trunc($!,	  $_[0]), $co_error) if $! + 0;
-	return &color(&trunc(readlink $_, $_[0]), $co_symln)
+	return &color(&{$longtrunc}($!,		 $_[0]), $co_error) if $! + 0;
+	return &color(&{$longtrunc}(readlink $_, $_[0]), $co_symln)
 		if ! &opt('h') && ! &opt('L') && -l _;
 
 	my $perms;
@@ -1089,7 +1158,7 @@ sub longstr {
 	my $ctime = &myctime($ftime);
 
 	my $r = "$perms $nlink $usize $ctime";
-	return &trunc($r, $_[0]) if ! &opt('n') || length($r) > $_[0];
+	return &{$longtrunc}($r, $_[0]) if ! &opt('n') || length($r) > $_[0];
 
 	$perms = &colorperms($perms, $uid, $gid);
 	$nlink =~ s/\S+/&color($&, $co_nlink)/e if $co_nlink;
@@ -1112,6 +1181,13 @@ sub longstr {
 	"$perms $nlink $usize $ctime";
 }
 
+sub longtrunc {
+	return $longtrunc = ($longtrunc eq 'trunc') ? 'truncr' : 'trunc'
+				  if $_[0] eq 'toggle';
+	return $longtrunc = $_[0] if $_[0] =~ /^\w+$/ && defined &{$_[0]};
+	$longtrunc = 'trunc';
+}
+
 sub txt2secs {
 	local $_ = shift;
 	return $_ * 31557600 if /\bye?a?r?s?\s*$/i;
@@ -1126,9 +1202,7 @@ sub txt2secs {
 ###############################################################################
 ## Options subroutines ########################################################
 
-sub initopts {
-	%opts = ();
-}
+sub initopts { %opts = () }
 
 sub setopt {
 	my($opt, $val) = @_;		# set opt to bool val, toggle if no val
@@ -1164,6 +1238,7 @@ sub byext {
 	$aext cmp $bext || &byname();
 }
 
+sub bydepth { $a =~ s:/:/:g    <=> $b =~ s:/:/:g    || &byname() }
 sub bycolor { &colorval($a)    cmp &colorval($b)    || &byname() }
 sub byinode { &statval($a,  1) <=> &statval($b,  1) || &byname() }
 sub bymode  { &statval($b,  2) <=> &statval($a,  2) || &byname() }
@@ -1221,7 +1296,10 @@ sub statval {
 ###############################################################################
 ## Directory expansion subroutines ############################################
 
-sub expand {
+sub expand	 { &expanddir('e', @_) }
+sub collapse	 { &expanddir('c', @_) }
+sub expandtoggle { &expanddir('t', @_) }
+sub expanddir {
 	return unless $depth;
 	my $act = shift;	# expand || collapse || toggle
 	$act = ($act =~ /^e/i) ? 1 : ($act =~ /^c/i) ? -1 : 0;
@@ -1356,12 +1434,22 @@ sub cmds {	# limited to 26 default keys (a-z), not guaranteed unique
 ###############################################################################
 ## Operation subroutines ######################################################
 
-sub get      { &getstr(@_) }
-sub getshell { &getstr(@_) }
-sub getjunk  { &getstr(@_) }
+sub rlhistget {
+	my $hist = shift;
+	my $feat = $hist && $rl->Features->{'setHistory'}
+			 && $rl->Features->{'getHistory'};
+	$rl->SetHistory(@$hist)  if $feat;
+	my $str = &getstr(@_);
+	@$hist = $rl->GetHistory if $feat;
+	$str;
+}
+
+sub get      { &rlhistget(\@rlhist_,	  @_) }
+sub getshell { &rlhistget(\@rlhist_shell, @_) }
+sub getjunk  { &rlhistget(\@rlhist_junk,  @_) }
 
 sub getfile  {
-	local $_ = &getstr(@_);
+	local $_ = &rlhistget(\@rlhist_file, @_);
 	s/ $// unless s/\\ $/ /;	# clear space from filename completion
 	$_;
 }
@@ -1444,14 +1532,55 @@ sub beep {
 sub vardump {
 	return '# Requires Data::Dumper module, standard with perl 5.004_71'
 	     . " and later.\n" unless defined $Data::Dumper::VERSION;
-	my($r)	  = '';
-	local($_) = join(',', @_); s/^[\s,;]*$/\\%::/;
+	my($r)	 = '';
+	local $_ = join(',', @_); s/^[\s,;]*$/\\%::/;
 	foreach (grep { /./ } split(/[\s,;]+/)) {
 		$r .= "# scalar, reference or object = $_\n"
 		   .  Data::Dumper->new([eval $_])
 				  ->Purity(1)->Terse(1)->Deepcopy(1)->Dump;
 	}
 	$r;
+}
+
+###############################################################################
+## Disk subroutines ###########################################################
+
+sub df {
+	&err('Filesys::DiskFree not available'), return ''
+		unless defined $Filesys::DiskFree::VERSION;
+	$df = new Filesys::DiskFree unless $df;
+	$df->df();
+}
+
+sub disks {
+	return () unless &df();
+	$df->disks();
+}
+
+sub diskdevs {
+	return () unless &df();
+	grep { /^\// && ! /^\/\// } map { $df->device($_) } $df->disks();
+}
+
+sub diskspace {
+	return () unless &df();
+	my @r   = ();
+	my %mag = (1 => 'K', 2 => 'M', 3 => 'G', 4 => 'T');
+	foreach (@_ || &pwd()) {
+		my($u, $a)     = ($df->used($_), $df->avail($_));
+		my($t, $f, $s) = ($u + $a, 1, '');
+		foreach (reverse sort keys %mag) {
+			($f, $s) = (1024 ** $_, $mag{$_}), last
+				if $t > 1024 ** ($_ + 1);
+		}
+		push(@r, join(' ',
+			sprintf("%.0f$s",	     $u / $f),	   '/',
+			sprintf("%.0f$s",	     $t / $f),	   '=',
+			sprintf('%.1f%%', $t ? 100 * $u / $t : 0), 'used,',
+			sprintf("%.0f$s",	     $a / $f),	   'avail in',
+			$df->mount($_), 'on', $df->device($_)));
+	}
+	$#r ? @r : shift @r;
 }
 
 ###############################################################################
@@ -1631,6 +1760,7 @@ sub wtmpcwd {
 	umask 077;
 	open(TMPCWD, "> $tmpcwd") or &err("Cannot write $tmpcwd ($!)");
 	print TMPCWD $cwd, "\n";
+	print TMPCWD join("\n", @choose), "\n";
 	umask $u;
 	close TMPCWD;
 }
@@ -1675,6 +1805,12 @@ sub trunc {
 	substr($s, 0, $n - 1) . '\\';
 }
 
+sub truncr {
+	my($s, $n) = @_;
+	return $s if length($s) <= $n;
+	'\\' . substr($s, -($n - 1));
+}
+
 sub truncm {
 	my($s, $n) = @_;
 	return $s if length($s) <= $n;
@@ -1686,7 +1822,7 @@ sub truncm {
 
 sub quote {
 	my @r = @_;
-	grep { s/[^-\w\.]/\\$&/g } @r;
+	grep { s/[^-\w\.\/]/\\$&/g } @r;
 	$#r ? @r : shift @r;
 }
 

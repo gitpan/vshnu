@@ -13,30 +13,55 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0107 1.0103);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0132 1.0128);
 &addversions($cfg::vname, $cfg::version);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
 
-# 1.0000  07 Nov 2000	Initial public release
+# 1.0000   7 Nov 2000	Initial public release
 # 1.0001  15 Nov 2000	$cfg::pagerr defaults to `less -r` if PAGER=less
-# 1.0002  05 Dec 2000	Added 'sleep 1' to /D command; *bz2 support
+# 1.0002   5 Dec 2000	Add 'sleep 1' to /D command; *bz2 support
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
-# 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
+# 1.0004  25 Jan 2001	Add ReadLine package to ^V command output
 # 1.0007  25 May 2001	Recognize .\d\w extensions as man pages
-# 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
-# 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
-# 1.0010  02 Jul 2001	Defined some function keys for navigation
-# 1.0011  19 Oct 2001	Added `md5sum` long listing
-# 1.0012  01 Feb 2002	Added viewing actions for SSL files
-# 1.0100  29 Mar 2002	Moved Y command to U, added Y as tree list cwd
-# 1.0101  01 Apr 2002	Enhanced directory actions, use ifopt
-# 1.0103  16 Apr 2002	Added ^_ command for variable listing
-# 1.0104  13 Mar 2003	Added list and extract actions for tnef files
-# 1.0105  31 May 2003	Added ReadLine package version to ^V command output
+# 1.0008   6 Jun 2001	Add `rpm -Fhv` freshen option for rpm files
+# 1.0009  15 Jun 2001	Add loading of .vshnu* files via typemap
+# 1.0010   2 Jul 2001	Define some function keys for navigation
+# 1.0011  19 Oct 2001	Add `md5sum` long listing
+# 1.0012   1 Feb 2002	Add viewing actions for SSL files
+# 1.0100  29 Mar 2002	Move Y command to U, add Y as tree list cwd
+# 1.0101   1 Apr 2002	Enhance directory actions, use ifopt
+# 1.0103  16 Apr 2002	Add ^_ command for variable listing
+# 1.0104  13 Mar 2003	Add list and extract actions for tnef files
+# 1.0105  31 May 2003	Add ReadLine package version to ^V command output
 # 1.0106  11 Jun 2003	Full versions support including ^V command
-# 1.0107   2 Jul 2003	Added binding for Gnu ReadLine insert-vshnu-chosen
+# 1.0107   2 Jul 2003	Add binding for Gnu ReadLine insert-vshnu-chosen
+# 1.0108   9 Jul 2003	Add /`p for choosing all PATH elements
+# 1.0109  11 Jul 2003	Add /`d for disks; Add `xpdf` fallback for .pdf
+# 1.0110   2 Dec 2003	Add decryption actions for PGP and GPG files
+# 1.0111   1 Jun 2004	Switch to better multimedia and office apps
+# 1.0112   2 Jun 2004	Add suspend choice to ^Q table and alias ^Z
+# 1.0113   3 Jun 2004	Add /`v for choosing all disk devices
+# 1.0114   4 Jun 2004	Add `stat` for special file action and /A command
+# 1.0115   4 Jun 2004	Add + command for longtrunc toggle
+# 1.0116   7 Jun 2004	Add ^G cmd for cwd df reporting; Use &pwd in ^A cmd
+# 1.0117   8 Jun 2004	Recognize .csv and .tsv extensions for office files
+# 1.0118  22 Jun 2004	Switch image viewer from `xv` to `display`, add .ico
+# 1.0119  29 Jun 2004	Add $insertkey and $insertcmd
+# 1.0120   6 Aug 2004	Add Q command for long listing by arbitrary shell cmd
+# 1.0121   2 Nov 2004	Add `konqueror` as a browser for tar and zip files
+# 1.0122  15 Nov 2004	Add info, list and dump actions for iso files
+# 1.0123  19 Nov 2004	Recognize .wmv extension for gmplayer files
+# 1.0124  19 Nov 2004	Recognize .st? and .sx? extensions for office files
+# 1.0125  23 Nov 2004	Add X cut buffer option to $insertcmd
+# 1.0126  26 Nov 2004	Move X cmd to I; Add X command to copy to X cut buffer
+# 1.0127  27 Nov 2004	Move Y tree command into dir action menu; Move U to B
+# 1.0128  27 Nov 2004	Add Y/U commands to expand/collapse display files
+# 1.0129  27 Nov 2004	Add ^Y command for file count reporting
+# 1.0130  28 Nov 2004	Add sort by path depth option
+# 1.0131  12 Dec 2004	Drop .tsv extension for office files
+# 1.0132  31 Jan 2005	Use &expand, &collapse and &expandtoggle aliases
 
 ###############################################################################
 ## External configuration #####################################################
@@ -125,6 +150,8 @@ $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 	'winch'		=> 'longls',
 );
 
+# A value of ('a') here would implement a simple single file cursor
+# instead of a whole bag, and free up 'b' .. 'z' for other uses.
 @bagkeys = @cfg::savebagkeys = ('a' .. 'z');
 				# <KEY>  is the selected bagkey character
 %bagmap  = (			# <FILE> is each bagkey's quoted file
@@ -133,7 +160,34 @@ $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 	'choose'	=> ['point <KEY>; choose <FILE>', 'choose <FILE>'],
 );
 
-&rl_bind_insert_vshnu_chosen('M-v');	# Gnu ReadLine only
+$insertkey = 'M-v';
+$insertcmd = [
+	['@choose',	  'insert chosen files', 'cC/',	'chosen files'],
+	['$point',	    'insert point file', 'p>',	'point file'],
+	['$_ = $point; s/\.[^\.\/]*$//; $_',
+		   'insert point file sans ext', 'P<',	'point file sans ext'],
+	['$cwd',     'insert current directory', '.',	'current directory'],
+	['pwd',		'insert hard directory', 'hH',	'hard directory'],
+	['$cdhist[1]{ls}',
+		       'insert prior directory', "\\",	'prior directory'],
+	['df && $df->mount(pwd)',
+			   'insert mount point', 'mM',	'mount point'],
+	['@cfg::set1',	    'insert file set 1', '1',	'file set 1'],
+	['@cfg::set2',	    'insert file set 2', '2',	'file set 2'],
+	['@cfg::set3',	    'insert file set 3', '3',	'file set 3'],
+	['@cfg::set4',	    'insert file set 4', '4',	'file set 4'],
+	['map { $_->{ls} } @cdhist',
+		     'insert directory history', 'dD',	'directory history'],
+	['@dohist',	  'insert file history', 'fF',	'file history'],
+	['getmark getkey("Mark:"), "dir"',
+		      'insert marked directory', '(',	'marked directory'],
+	['getmark getkey("Mark:"), "file"',
+			   'insert marked file', ')',	'marked file'],
+	['getmark getkey("Mark:"), "path"',
+			   'insert marked path', '9',	'marked path'],
+	['split(/\n/, `xcb -p 0`)',
+			'insert X cut buffer 0', 'xX',	'X cut buffer'],
+];
 
 ###############################################################################
 ## Typemap configuration ######################################################
@@ -155,49 +209,61 @@ $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 	''		=> ['sh $cfg::editor, $_; winch', 'edit this file'],
 );
 
-%typemap_expand = (	# "
+%typemap_expand = (	## " ##
 	' /^$/'		=> 'win',
 	'! -e _'	=> 'beep; win',
-	'-d _'		=> ['expand "toggle", $_; win',
+	'-d _'		=> ['expandtoggle $_; win',
 			    'expand or collapse this directory'],
 	''		=> 'beep',
 );
 
+sub cfg::zarbrowse {
+	['xshell "konqueror -- ' . $_[0] . ':$_fq"; win',
+	 "browse the contents of this $_[1]", 'bBkK', 'browse'] }
+sub cfg::tarbrowse { &cfg::zarbrowse('tar', @_) }
+sub cfg::zipbrowse { &cfg::zarbrowse('zip', @_) }
 $cfg::page  = ' | $cfg::pager"; winch';
 $cfg::pagea = ' | $cfg::pagera"; winch';
-%typemap_do = (		# ?
+%typemap_do = (		## ? ##
 ' /^$/'		=> 'win',
 '! -e _'	=> 'beep; win',
-'-d _'		=> [['shell "ls -al", ifopt("L"), ifopt("T", "-F"), "-R --'
-		     .   ' $_q | $cfg::pagerr"; winch',
+'-d _'		=> [['shell "ls -lR", unlessopt("a"), ifopt("L"),'
+		     . ' ifopt("T", "-F"), "-- $_q | $cfg::pagerr"; winch',
 		     'long list this directory recursively', 'lL', 'ls -lR'],
-		    ['shell "tree -aACpug", ifopt("L", "-l"), ifopt("T", "-F")'
-		     . ', "$_q | $cfg::pagerr"; winch',
-		     'long tree list this directory',	   'tT', 'tree -pug']],
+		    ['shell "tree -A", unlessopt("a"), ifopt("C"),'
+		     . ' ifopt("L", "-l"), ifopt("T", "-F"),'
+		     . ' "$_q | $cfg::pagerr"; winch',
+		     'tree list this directory',	   'tT', 'tree'],
+		    ['shell "tree -Apug", unlessopt("a"), ifopt("C"),'
+		     . ' ifopt("L", "-l"), ifopt("T", "-F"),'
+		     . ' "$_q | $cfg::pagerr"; winch',
+		     'long tree list this directory',  'pPuUgG', 'tree -pug']],
 '/(^|\/|\.)mbox$/'
 		=> ['sh "mail", "-f", $_; winch',
 		    'run `mail` on this mailbox file'],
 '/\.(\d\w?|man)$/'
 		=> ['sh "nroff -man < $_q | $cfg::pagerr"; winch',
 		    'view this man page formatted'],
-'/\.(au|snd|wav)$/'
-		=> ['xshell "xanim -- $_q"; win', 'play this audio file'],
-'/\.(avi|mo?v(ie)?|mpe?g|qt)$/i'
-		=> ['xshell "xanim +Sr +Ca -Cn -b -B -- $_q"; win',
+'/\.(aif[cf]?|au|snd)$/'
+		=> ['xshell "xplay -stay $_q"; win',
+		    'play this AU/AIFF audio file'],
+'/\.(avi|mo?v(ie)?|mpe?g|qt|wmv)$/i'
+		=> ['xshell "xterm -e gmplayer -- $_q"; win',
 		    'play this video file'],
-'/\.(bmp|gif|jpe?g|p[bgp]m|pcx|png|tiff?|x[bp]m)$/i'
-		=> ['xshell "xv $_q"; win', 'display this image file'],
+'/\.(bmp|gif|ico|jpe?g|p[bgp]m|pcx|png|tiff?|x[bp]m)$/i'
+		=> ['xshell "display $_q"; win', 'display this image file'],
 '/\.(dir|pag)$/'=> ['sh "makedbm -u $_rq' . $cfg::page,
 		    'view a dump of this dbm file'],
-'/\.(doc|ppt|rtf|xls)$/i'
-		=> ['xshell "soffice -- $_q"; win',
-		    'load this file into StarOffice'],
+'/\.(csv|doc|ppt|rtf|st[cdiw]|sx[cdgimw]|xls)$/i'
+		=> ['xshell "ooffice -- $_q"; win',
+		    'load this file into OpenOffice'],
+'/\.(mp3|ogg|wav)$/'
+		=> ['xshell "xmms -p -e -- $_q"; win',
+		    'play this MP3/Ogg/WAV audio file'],
 '/\.(wr|vrm)l(\.g?[Zz])?$/'
-		=> ['xshell "vrweb $_q"; win', 'display this VRML file'],
+		=> ['xshell "freewrl -- $_q"; win', 'display this VRML file'],
 '/\.a$/'	=> ['sh "ar tv $_q' . $cfg::page,
 		    'list the contents of this archive'],
-'/\.aif[cf]?$/' => ['xshell "xplay -stay $_q"; win',
-		    'play this AIFF audio file'],
 '/\.crl$/'	=> ['sh "openssl crl -noout -text -in $_q' . $cfg::page,
 		    'view this SSL certificate revocation list'],
 '/\.crt$/'	=> ['sh "openssl x509 -noout -text -in $_q' . $cfg::page,
@@ -209,19 +275,26 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'display this PostScript file'],
 '/\.fig$/'	=> ['xshell "xfig $_q"; win',
 		    'load this figure file into `xfig`'],
-'/\.jar$/'	=> ['sh "unzip -l -- $_q' . $cfg::pagea,
-		    'list the contents of this Java archive'],
+'/\.gpg$/'	=> ['sh "gpg -- $_q"; ret; winch', 'decrypt this GPG file'],
+'/\.iso$/i'	=> [['sh "isoinfo -d -i $_q' . $cfg::pagea,
+		     'list the info about this ISO image', 'iI', 'info'],
+		    ['sh "isoinfo -l -i $_q' . $cfg::pagea,
+		     'list the files in this ISO image', 'lL', 'list'],
+		    ['sh "isodump", "--", $_; winch',
+		     'view the dump of this ISO image', 'dDvV', 'dump']],
+'/\.jar$/'	=> [['sh "unzip -l -- $_q' . $cfg::pagea,
+		     'list the contents of this Java archive', 'tTlL', 'list'],
+		    &cfg::zipbrowse('Java archive')],
 '/\.key$/'	=> ['sh "openssl rsa -noout -text -in $_q' . $cfg::page,
 		    'view this SSL private key'],
 '/\.lyx$/'	=> ['xshell "lyx $_q"; win', 'load this file into LyX'],
-'/\.mp3$/'	=> ['xshell "mxaudio $_q"; win', 'play this MP3 audio file'],
 '/\.o$/'	=> ['sh "nm -- $_q' . $cfg::page,
 		    'view the name list of this object file'],
-'/\.pdf$/i'	=> ['xshell "acroread $_q"; win', 'display this PDF file'],
+'/\.pdf$/i'	=> ['xshell "xpdf -q -- $_q"; win', 'display this PDF file'],
+'/\.pgp$/'	=> ['sh "pgp -- $_q"; ret; winch', 'decrypt this PGP file'],
 '/\.prm$/'	=> ['sh "openssl dsaparam -noout -text -in $_q' . $cfg::page,
 		    'view this SSL parameter file'],
-'/\.ram?$/'	=> ['xshell "realplay -- $_q"; win',
-		    'play this RealAudio file'],
+'/\.r(am?|m)$/'	=> ['xshell "realplay $_q"; win', 'play this Real file'],
 '/\.rpm$/'	=> [['sh "rpm -qisp -- $_q' . $cfg::page,
 		     'view the info of this RPM package', 'qQ', 'query'],
 		    ['sh "rpm", "-ihv", "--", $_; ret; winch',
@@ -229,17 +302,20 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    ['sh "rpm", "-Fhv", "--", $_; ret; winch',
 		     'freshen this RPM package',	  'fF', 'freshen']],
 '/\.t(a(r\.?)?)?bz2$/i'
-		=> ['sh "bzip2 -d < $_q | tar -tvf -' . $cfg::pagea,
-		    'list the contents of this bzip2 tarball'],
+		=> [['sh "bzip2 -d < $_q | tar -tvf -' . $cfg::pagea,
+		     'list the contents of this bzip2 tarball',
+		     'tTlL', 'list'],
+		    &cfg::tarbrowse('bzip2 tarball')],
 '/\.t(a(r\.?)?)?gz$/i'
-		=> ['sh "gzip -d < $_q | tar -tvf -' . $cfg::pagea,
-		    'list the contents of this gzip tarball'],
+		=> [['sh "gzip -d < $_q | tar -tvf -' . $cfg::pagea,
+		     'list the contents of this gzip tarball', 'tTlL', 'list'],
+		    &cfg::tarbrowse('gzip tarball')],
 '/\.t(a(r\.?)?)?z$/i'
 		=> ['sh "uncompress < $_q | tar -tvf -' . $cfg::pagea,
 		    'list the contents of this compress tarball'],
 '/\.tar$/i'	=> [['sh "tar -tvf $_q' . $cfg::page,
-		     'list the contents of this tar archive',
-		     'tTlL', 'list contents'],
+		     'list the contents of this tar archive', 'tTlL', 'list'],
+		    &cfg::tarbrowse('tar archive'),
 		    ['sh "tar -xpvf $_q' . $cfg::page,
 		     'extract this entire tar archive',
 		     'xX',   'extract all']],
@@ -259,8 +335,9 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 '/\.xcf$/'	=> ['xshell "gimp $_q"; win',
 		    'load this image file into `gimp`'],
 '/\.xwd$/'	=> ['xshell "xwud -in $_q"; win', 'display this window dump'],
-'/\.zip$/i'	=> ['sh "unzip -l -- $_q' . $cfg::pagea,
-		    'list the contents of this zip archive'],
+'/\.zip$/i'	=> [['sh "unzip -l -- $_q' . $cfg::pagea,
+		     'list the contents of this zip archive', 'tTlL', 'list'],
+		    &cfg::zipbrowse('zip archive')],
 '/(^|\/)Imakefile$/'
 		=> ['shell getcmd "xmkmf"; ret; winch',
 		    'run `xmkmf` which will use this Imakefile'],
@@ -276,7 +353,8 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'view this file bunzipped'],
 '4; /\.g?z$/'	=> ['sh "gzip -d < $_q' . $cfg::pagea,
 		    'view this file gunzipped'],
-'9; ! -f _'	=> ['beep', 'ignore this special file'],
+'9; ! -f _'	=> ['sh "stat", "--", $_; ret; winch',
+		    'run `stat` on this special file'],
 '9; -s _ && -B _'
 		=> ['sh "strings < $_q' . $cfg::page,
 		    'view the strings in this binary file'],
@@ -289,8 +367,7 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 
 %keymap_ = (
-"\cA"	=> ['chomp($_ = `pwd`); cd $_; win',
-	    "cd to the current directory's hard path"],
+"\cA"	=> ['cd pwd; win', "cd to the current directory's hard path"],
 "\cB"	=> ['@bagkeys ? rebag : rebag(@cfg::savebagkeys)',
 	    "toggle the bag's presence"],
 "\cC"	=> ['altls \@choose, "Chosen Files"; win',
@@ -299,6 +376,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'switch to/from the directory history display'],
 "\cF"	=> ['altls \@dohist, "File History"; win',
 	    'switch to/from the file history display'],
+"\cG"	=> ['msg diskspace', 'report the disk space for the current disk'],
 "\cH"	=> ['bag "["', 'slide the bag backward on the screen'],
 "\cI"	=> ['bag "]"', 'slide the bag forward on the screen'],
 "\cL"	=> ['winch', 'redraw the screen, clearing any long listing'],
@@ -308,10 +386,12 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "\cP"	=> ['cdhist "prev"; win',
 	    'cd to the previous directory in the history'],
 "\cQ"	=> [['do $vshnucfg; err $@; win', 'reload the config file ($vshnucfg)',
-				       "cC\cClL\cL", 'load $vshnucfg'],
+				       "cC\cClL\cL",	  'load $vshnucfg'],
 	    ['exec $0', 'restart and reinitialize $vname ($0)',
-				       "sS\cS",	     'restart'],
-	    ['last',	'quit $vname', "qQ",	     'quit']],
+				       "sS\cS",		  'restart'],
+	    ['stop; winch', 'suspend to the master shell',
+				       "zZ\cZvV\cVyY\cY", 'suspend'],
+	    ['last',	'quit $vname', "qQ",		  'quit']],
 "\cR"	=> ['rechoose; keymap "choose"', 'rechoose the previously chosen set'],
 "\cT"	=> ['cfg::setset(@choose) && win',
 	    'append the chosen set to the current file set display'],
@@ -320,6 +400,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'list the $vname software versions and packages'],
 "\cW"	=> ['cdhist "start"; win',
 	    'rewind and cd to the start of the directory history'],
+"\cY"	=> ['msg filecount', 'report the numbers of directories and files'],
 "\c["	=> ['win "<1"', 'shift the file display left one column'],
 "\c]"	=> ['win ">1"', 'shift the file display right one column'],
 "\c_"	=> ['pipeto $cfg::pager, "#!/bin/perl\n", vardump get "Refs (all):";'
@@ -349,6 +430,8 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'cd to the given mark or point to the given bag key'],
 "*"	=> ['winat getfile "Find:"',
 	    'page to the file alphabetically >= the given string'],
+"+"	=> ['longtrunc "toggle"; win',
+	    'truncate the long listing area on the left/right'],
 "-"	=> ['point "<1"; point',
 	    'act on the file above the point by its type'],
 "."	=> ['dotypepath getfile "File:"',
@@ -376,6 +459,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 ">"	=> ['point', 'act on the point file by its type'],
 "?"	=> ['typemap "*do"; msg $cfg::quemarkmsg',
 	    'toggle the special action file type mode'],
+"B"	=> ['shell getcmd "man"; winch', 'run `man` with the given arguments'],
 "F"	=> ['longls "-win", "file", ifopt("L"), "--"',
 	    'long list files with their `file` output'],
 "L"	=> ['longls "-win", "+1"',
@@ -385,14 +469,27 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "O"	=> ['keymap "opts"', 'push to option key mode'],
 "P"	=> ['longls "-win", "rpm -qf -- \$_ 2>&1"',
 	    'long list files with their owning RPM package'],
+"Q"	=> ['longls "-win", getshell "Command:"',
+	    'long list files with the queried shell command output'],
 "T"	=> ['sh "top -S"; winch', 'run `top -S`'],
-"U"	=> ['shell getcmd "man"; winch', 'run `man` with the given arguments'],
+"U"	=> ['collapse lsall; win', 'collapse all the display files'],
 "V"	=> ['stop; winch', 'suspend to the master shell'],
-"Y"	=> ['shell "tree -aAC", ifopt("L", "-l"), ifopt("T", "-F"),'
-	    . ' ". | $cfg::pagerr"; winch', 'tree list the current directory'],
-"["	=> ['expand "expand", $point; win', 'expand the point file'],
+"X"	=> [['pipeto "xcb -s 0", $cwd',
+	     'copy the current directory to X cut buffer 0',
+	     'dDcC', 'current directory'],
+	    ['pipeto "xcb -s 0", "$user\@$host:$cwd"',
+	     'copy user\@host:dir to X cut buffer 0',
+	     'uUhH', 'user\@host:dir'],
+	    ['pipeto "xcb -s 0", absfile $point',
+	     'copy the point file to X cut buffer 0',
+	     'pP>',  'point file'],
+	    ['pipeto "xcb -s 0", join("\n", lsall)',
+	     'copy all the display files to X cut buffer 0',
+	     'fFlL', 'display files']],
+"Y"	=> ['expand lsall; win',    'expand all the display files'],
+"["	=> ['expand $point; win',   'expand the point file'],
 "\\"	=> ['cdhist "back"; win', 'cd back to the prior directory'],
-"]"	=> ['expand "collapse", $point; win', 'collapse the point file'],
+"]"	=> ['collapse $point; win', 'collapse the point file'],
 "_"	=> ['longlen "toggle"; win',
 	    'shift the long listing area to the left/right'],
 "{"	=> ['point "<1"', 'slide the point up one file, wrapping around'],
@@ -409,6 +506,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 ""	=> ['beep; home', 'invalid command key'],
 );
 
+$keymap_{"\cZ"}	 = $keymap_{"\cQ"};	# screen(1) special char
 $keymap_{"ins"}	 = $keymap_{"\cI"};
 $keymap_{"del"}	 = $keymap_{"\177"} = $keymap_{"\cH"};
 $keymap_{"home"} = $keymap_{"~"};	# potential protocol escape char
@@ -423,7 +521,7 @@ $keymap_{"end"}	 = $keymap_{"\c["};	# potential protocol escape char
 
 $cfg::unchoose = '; unchoose @choose; keymap; winch';
 $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
-%keymap_choose = (	# /
+%keymap_choose = (	## / ##
 "\cB"	=> ['choose @bagfiles', 'choose all the bag files'],
 "\cE"	=> ['map { dotype $_ } @choose',
 	    'act on each chosen file in turn by its type'],
@@ -445,6 +543,8 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	    . $cfg::unchoose, 'run a shell (or ;perl) command'
 	    . ' with the chosen files, clearing output'],
 "@"	=> ['choose lsall', 'choose all the display files'],
+"A"	=> ['shell "stat", ifopt("L"), "--", quote(@choose), "| $cfg::pager"'
+	    . $cfg::unchoose, 'run `stat` on the chosen files'],
 "C"	=> [['sh "chmod", gets("Mode:"), @choose; ret' . $cfg::unchoose,
 	     'run `chmod` on the chosen files', 'mM', 'chmod'],
 	    ['sh "chown", gets("Owner:"), @choose; ret' . $cfg::unchoose,
@@ -454,20 +554,28 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	     'run `chgrp` on the chosen files', 'gG', 'chgrp']],
 "D"	=> ['ask "Remove recursively?"; shell "rm -r --", quote(@choose), "; '
 	    . $cfg::shbeep . ' &"; sleep 1' . $cfg::unchoose, 'recursively'
-	    . ' remove the chosen files and directories (background)'],
+	    . ' remove the chosen files/directories (background)'],
 "E"	=> ['sh $cfg::editor, @choose' . $cfg::unchoose,
 	    'edit the chosen files'],
+"I"	=> ['xshell "display", quote(@choose)' . $cfg::unchoose,
+	    'display the chosen image files'],
 "O"	=> ['keymap "opts"', 'push to option key mode'],
 "R"	=> ['ask "Remove?"; remove @choose' . $cfg::unchoose,
 	    'remove the chosen files and empty directories'],
-"X"	=> ['xshell "xv", quote(@choose)' . $cfg::unchoose,
-	    'display the chosen image files'],
-"["	=> ['expand "expand", @choose' . $cfg::unchoose,
+"["	=> ['expand @choose'   . $cfg::unchoose,
 	    'expand the chosen directories'],
-"]"	=> ['expand "collapse", @choose' . $cfg::unchoose,
+"]"	=> ['collapse @choose' . $cfg::unchoose,
 	    'collapse the chosen directories'],
-"`"	=> ['choose getoutput "`Shell`:"; winch',
-	    'choose the file list output of a shell (or ;perl) command'],
+"`"	=> [['choose getoutput "`Shell`:"; winch',
+	     'choose the file list output of a shell (or ;perl) command',
+	     'cCsS`;:$', 'command'],
+	    ['choose split /:/, $ENV{PATH}; win', 
+	     'choose the elements of the PATH environment variable',
+	     'pP',	 'PATH'],
+	    ['choose sort &disks; win',	   'choose all system disks',
+	     'dDmM',	 'disks'],
+	    ['choose sort &diskdevs; win', 'choose all system disk devices',
+	     'vV',	 'disk devices']],
 ""	=> ['cmdeval keymapcmd ""',
 	    'execute the main mode command for this key'],
 );
@@ -475,7 +583,7 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 ###############################################################################
 ## "Options" keymap configuration #############################################
 
-%keymap_opts = (	# O
+%keymap_opts = (	## O ##
 	"\cN"	=> $keymap_{"\cN"},
 	"%"	=> ['help "-unused", $cfg::pagerr, %keymap_opts; winch',
 		    'list the commands for the option key mode'],
@@ -483,10 +591,11 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	"O"	=> ['keymap', 'pop from option key mode'],
 	""	=> ['beep; keymap; home', 'invalid option'],
 );
-$optkeys = '#ABCDFILNSTXabcdfghilmnoprstu'; # enabled options
-$optons  = ($color) ? 'Cn' : '';	    # options with a toggled meaning
+$optkeys = '#/ABCDFILNSTXabcdfghilmnoprstu'; # enabled options
+$optons  = ($color) ? 'Cn' : '';	     # options with a toggled meaning
 %cfg::desc_opts = (
 	"#"	=> "list inode number instead of size in long listings",
+	"/"	=> "sort by increasing path depth",
 	"A"	=> "don't list . and ..",
 	"B"	=> "don't list backup files",
 	"C"	=> "color files",
@@ -543,9 +652,8 @@ sub cfg::setset {
 ###############################################################################
 ## Personal configuration #####################################################
 
-$vshnurc = $ENV{'VSHNURC'} || $default_vshnurc ||
-	   ((-f "$ENV{'HOME'}/.vshnurc") ? "$ENV{'HOME'}/.vshnurc"
-					 : 'vshnurc.pl');
+$vshnurc = $ENV{VSHNURC} || $default_vshnurc ||
+	   ((-f "$ENV{HOME}/.vshnurc") ? "$ENV{HOME}/.vshnurc" : 'vshnurc.pl');
 (-r _) ? do { do $vshnurc; &err($@) } : &err("Cannot read $vshnurc")
 	if -f $vshnurc;
 

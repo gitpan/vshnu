@@ -16,6 +16,9 @@ line environments are still readily usable over low-bandwidth network
 connections and restricted displays.  Neal Stephenson explains the history
 and values of computer interfaces exceedingly well in "In the Beginning
 was the Command Line" <http://www.cryptonomicon.com/beginning.html>.
+One can even build a strong case that a CLI is best for a learning
+new computer user, as described in "The Command Line - The Best Newbie
+Interface?" <http://osnews.com/story.php?news_id=6282>.
 
 However, when one is concerned about file manipulation and management
 (which is a very good thing to be concerned about as the basis of your
@@ -91,7 +94,8 @@ o Separate per-site and per-user configurability
 o Can use the CD_PATH environment variable as a search path for files
   and directories
 o Recognizes the following standard environment variables: DISPLAY,
-  EDITOR, HOME, HOST, LS_COLORS, MAIL, PAGER, PATH, SHELL and VISUAL
+  EDITOR, HOME, HOST, LS_COLORS, MAIL, PAGER, PATH, PERL_RL, SHELL
+  and VISUAL
 
 ------------------------------  HISTORY  -------------------------------
 
@@ -119,7 +123,7 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     here in the libperl/Term directory.  If you wish to install these,
     just add a ".pm" extension to the filenames and copy them into a
     directory in your Perl's @INC or into $HOME/perl/Term, $HOME/lib/Term,
-    $HOME/libp/Term, $HOME/lib/perl/Term or $HOME/libp/perl/Term.
+    or $HOME/lib/perl/Term.
 
     Term::Screen uses Term::Cap, so you'll need a termcap file containing
     your terminals' capabilities definitions.  Most systems already
@@ -133,10 +137,9 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
 
 2)  OPTIONAL
 
-    The Term::ReadLine::Gnu, or at least the Term::ReadLine::Perl,
-    module is recommended to provide line editing, history, filename
-    completion, and chosen files insertion (with M-v) within vshnu
-    <http://www.cpan.org>.
+    The Term::ReadLine::Gnu, or at least the Term::ReadLine::Perl, module
+    is recommended to provide line editing, history, filename completion,
+    and insertions (with M-v) within vshnu <http://www.cpan.org>.
 
     If available, vshnu can make good use of color in a terminal or
     console with ANSI color support, and this is highly recommended.  For
@@ -149,6 +152,9 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     vshnu to determine how files should be colored by type and name.
     As an example, the file color specification file I use is available
     at <http://www.cs.indiana.edu/~kinzler/home.html#etc/colorrc-ansi>.
+
+    The `xcb` utility will be required for the interfaces to the X11
+    cut buffer to work <http://www.goof.com/pcg/marc/xcb.html>.
 
 3)  INSTALLATION
 
@@ -173,11 +179,11 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
 	directory in your PATH.  Make sure the copy's made executable.
 
 	Then the "vshnucfg.pl" file can be copied where you wish.  If it's
-	not installed as $HOME/.vshnucfg or as vshnucfg.pl somewhere
-	in your Perl's @INC or in $HOME/perl, $HOME/lib, $HOME/libp,
-	$HOME/lib/perl or $HOME/libp/perl, then you'll have to set
-	the VSHNUCFG environment variable to its location, or edit the
-	installed "vshnu" script near the top to set $default_vshnucfg.
+	not installed as $HOME/.vshnucfg or as vshnucfg.pl somewhere in
+	your Perl's @INC or in $HOME/perl, $HOME/lib or $HOME/lib/perl,
+	then you'll have to set the VSHNUCFG environment variable to its
+	location, or edit the installed "vshnu" script near the top to
+	set $default_vshnucfg.
 
 4)  SHELL INTEGRATION
 
@@ -203,14 +209,15 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     with a "vshnurc" Perl file.  It's loaded after the "vshnucfg" Perl
     file (installed above) and so can modify or supplement the effects
     of anything in it.  Both of these files are just Perl code that
-    define operating structures for vshnu's environment.  The location of
-    the vshnurc file is assumed to be $HOME/.vshnurc (or vshnurc.pl in
-    Perl's @INC or in $HOME/perl, $HOME/lib, $HOME/libp, $HOME/lib/perl
-    or $HOME/libp/perl) unless the VSHNURC environment variable is set
-    (or the $default_vshnurc variable is set in the vshnucfg file).
-    My personal vshnurc file is included here as "vshnurc.pl" as an
-    example to start your own.  Some familiarity with Perl will probably
-    be required to do any significant work within these files.
+    define operating structures for vshnu's environment.  The location
+    of the vshnurc file is assumed to be $HOME/.vshnurc (or vshnurc.pl
+    in Perl's @INC or in $HOME/perl, $HOME/lib or $HOME/lib/perl) unless
+    the VSHNURC environment variable is set (or the $default_vshnurc
+    variable is set in the vshnucfg file).  My personal vshnurc file
+    is included here as "vshnurc.pl" as an example to start your own.
+    Some familiarity with Perl will probably be required to do any
+    significant work within these files.  Contributions of additions
+    or improvements to the vshnucfg file are welcome.
 
 -------------------------------  USAGE  --------------------------------
 
@@ -228,7 +235,7 @@ with the supplied configuration:
     the long listings of the files in the bag's column (<Control-L> will
     clear the long listings).  ':' will let you run a shell command.
     'V' will suspend vshnu, dropping you back into the invoking shell.
-    <Control-Q>q will exit vshnu.
+    <Control-Q>q (or <Control-Z>q) will exit vshnu.
 
 Of course, there's much, much more possible.  Type '%' within each mode
 of vshnu to see all the key commands available and what they'll do.
@@ -269,8 +276,6 @@ regarding vshnu is available at
 
 	http://groups.yahoo.com/group/vshnu
 
-You needn't subscribe to this list to read or post to it.
-
 A Japanese review and showcase of vshnu was published in the September
 2001 issue of Linux Magazine <http://www.ascii.co.jp/linuxmag/>,
 pages 124-125.
@@ -278,7 +283,7 @@ pages 124-125.
 ---------------------------  GPL COPYRIGHT  ----------------------------
 
 vshnu: the New Visual Shell
-Copyright (C) 1999-2003 Stephen B Kinzler
+Copyright (C) 1999-2004 Stephen B Kinzler
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -304,7 +309,7 @@ align		http://www.cs.indiana.edu/~kinzler/align
 vshnu		http://www.cs.indiana.edu/~kinzler/vshnu
 		A visual shell and CLI shell supplement
 webrowse	http://www.cs.indiana.edu/~kinzler/webrowse
-		Tools to interface Netscape to the Unix user CLI
+		Tools to interface web browsers to the Unix user CLI
 xtitle		http://www.cs.indiana.edu/~kinzler/xtitle
 		Set window title and icon name for an X11 terminal window
 z		http://www.cs.indiana.edu/~kinzler/z
@@ -313,6 +318,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler		       revised July 2003
+http://www.cs.indiana.edu/~kinzler		   revised November 2004
 
 Your feedback is welcome!

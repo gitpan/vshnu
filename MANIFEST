@@ -6,6 +6,7 @@ bash/README
 bash/vshnu-bash
 libperl/Term/ANSIColor
 libperl/Term/Screen
+t/use.t
 tcsh/README
 tcsh/lo
 tcsh/penv

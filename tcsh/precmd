@@ -1,16 +1,16 @@
 #!/bin/csh
 
 # etc/precmd - tcsh and vshnu/vsh interaction setup script
-# Steve Kinzler, kinzler@cs.indiana.edu, Mar 98/Mar 99/Mar 02
+# Steve Kinzler, kinzler@cs.indiana.edu, Mar 98/Mar 99/Mar 02/Jul 03
 # see website http://www.cs.indiana.edu/~kinzler/vshnu/
 # http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
 # see also http://www.cs.indiana.edu/~kinzler/home.html#binp/penv
 
 # For use with the vsh*<->tcsh integration.  This file allows directory
-# changes to be communicated between vsh* and tcsh, and environment
-# changes to be propogated from tcsh to vsh*.  It provides quick aliases
-# for switching back to vsh*.  It assumes the `penv` command script is
-# available.
+# changes to be communicated between vsh* and tcsh, environment changes
+# to be propogated from tcsh to vsh*, and chosen file lists to be progated
+# from vsh* to tcsh.  It provides quick aliases for switching back to vsh*.
+# It assumes the `penv` command script is available.
 
 # To use this, you may install this file as ~/etc/precmd and add the
 # following to your ~/.tcshrc or ~/.cshrc file:
@@ -36,11 +36,12 @@ set vshpid=`sed -n '/[ (]vsh/s/.* \([0-9]*\) S[tu].*/\1/p' $VSHNUTMP/precmd$$`
 set vshtmp=$VSHNUTMP/vsh$vshpid vshenv=$VSHNUTMP/env$vshpid
 unset vshpid
 
-alias getvshdir 'set vshdir="`cat $vshtmp`"; \rm -f $vshtmp $vshenv'
-alias setvshdir 'set umask=0`umask`; umask 077; echo "$cwd" > $vshtmp;' \
-		'penv > $vshenv; umask $umask; unset umask'
+alias getvsh 'set vshdir="`sed 1q < $vshtmp`";' \
+	     'set choose=(`sed 1d < $vshtmp`); \rm -f $vshtmp $vshenv'
+alias setvsh 'set umask=0`umask`; umask 077; echo "$cwd" > $vshtmp;' \
+	     'penv > $vshenv; umask $umask; unset umask'
 alias vcd 'pushd "$vshdir" > /dev/null'
-alias vv "alias precmd 'unalias precmd; getvshdir; vcd'; %vsh"
-alias v 'setvshdir; vv'
+alias vv  "alias precmd 'unalias precmd; getvsh; vcd'; %vsh"
+alias v   'setvsh; vv'
 
-unalias precmd; getvshdir; vcd
+unalias precmd; getvsh; vcd

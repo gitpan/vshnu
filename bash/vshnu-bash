@@ -6,6 +6,8 @@
 # to be distributed under the same terms as vshnu
 # some vshnu 1.0100 and Solaris compatability tweaks by
 #   Steve Kinzler, kinzler@cs.indiana.edu, Mar 02
+# tweak for VSHNUCWD file format
+#   Steve Kinzler, kinzler@cs.indiana.edu, Jul 03
 #
 # To use, put vshnu-bash into your path and add the following lines to
 # your .bashrc
@@ -87,7 +89,7 @@ function vshnu_restore_cwd {
 
   vshnu_set_dir
   if [ -e "$VSHNUTMP/curdir" ]; then
-    cd `cat $VSHNUTMP/curdir`
+    cd `sed 1q $VSHNUTMP/curdir`
   fi
 }
 
