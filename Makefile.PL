@@ -2,8 +2,8 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0003',	# package version
-					# also ../*.html, freshmeat, pause
+	VERSION		=> '1.0005',	# package version
+					# also ../*.html, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
 #	DATE		=> 'Nov 2000',
@@ -20,6 +20,8 @@ WriteMakefile (
 # 1.0001  15 Nov 2000	Color text pager defaults to `less -r` if PAGER=less
 # 1.0002  05 Dec 2000	Added 'sleep 1' to backgrounded commands; *bz2 support
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z; s/.pm// in libperl
+# 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
+# 1.0005  26 Jan 2001	Use most specific LS_COLORS match and "--color=yes"
 
 sub MY::postamble { q~
 import:

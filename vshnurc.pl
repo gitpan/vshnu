@@ -16,7 +16,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0003 1.0003);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0005 1.0004);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
      "($cfg::version)") if $rc::require != $cfg::version;
@@ -24,6 +24,8 @@
 # 1.0000  07 Nov 2000	Initial public release
 # 1.0002  04 Dec 2000	Added 'sleep 1' to /Z command
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
+# 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
+# 1.0005  26 Jan 2001	Appended "=yes" to "--color"s
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -53,7 +55,7 @@ delete $co_user{$user}, @co_user{'kinzler', 'oracle'} = ('blue', 'magenta')
 $typemap_{''}[0] = 'sh $cfg::editor, "--", $_; winch';
 
 (@{$typemap_do{'-d _'}[0]}[0,3], @{$typemap_do{'-d _'}[1]}[0,3]) =
-	('shell "lls", opt("L") ? "-L" : (), "-R --color -- $_q |'
+	('shell "lls", opt("L") ? "-L" : (), "-R --color=yes -- $_q |'
 	 . ' $cfg::pagerr"; winch', 'lls -R',
 	 'shell "tls", opt("L") ? "-l" : (), "$_q |'
 	 . ' $cfg::pagerr"; winch', 'tls');
@@ -103,7 +105,7 @@ unshift(@{$keymap_{"\cQ"}},
 	 . '($vshnurc)', "rR\cR", 'load $vshnurc'])
 		unless $keymap_{"\cQ"}[0][2] =~ /r/i;
 $keymap_{"\cV"}[0] = 'msg "$vname $version; $cfg::vname $cfg::version;'
-		   . ' $rc::vname $rc::version"';
+		   . ' $rc::vname $rc::version; " . $rl->ReadLine';
 $keymap_{","}	   = ['evalnext \@rc::ring', 'cycle to monitored directories'];
 $keymap_{"A"}	   = ['longls "-win", "getfacls --"',
 		      'long list files with their Solaris ACL info'];

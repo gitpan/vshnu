@@ -18,10 +18,11 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0003);
+($vname, $version) = qw(vshnu 1.0005);
 
 # 1.0000  07 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
+# 1.0005  26 Jan 2001	Use most specific LS_COLORS match
 
 ###############################################################################
 ## Initial setup ##############################################################
@@ -541,14 +542,14 @@ sub filecolor {
 	elsif (! -e $file) { $c = 'mi' }
 	return &num2color($lscolors{$c}) if $c;
 
-	foreach (keys %lscolors) {
-		next unless s/^\*//;
-		return &num2color($lscolors{"*$_"})
-			if substr($file, -length($_)) eq $_;
-	}
+	$c = (sort bylengthr grep(s/^\*// && substr($file, -length($_)) eq $_,
+				  keys %lscolors))[0];
+	return &num2color($lscolors{"*$c"}) if $c ne '';
 
 	&num2color($lscolors{(-f _) ? 'fi' : 'no'});
 }
+
+sub bylengthr { length($b) <=> length($a); }
 
 sub num2color {
 	join(' ', map { $ansicolor{$_ + 0} } split(/;/, join(';', @_)));

@@ -13,7 +13,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0003 1.0003);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0004 1.0003);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
@@ -22,6 +22,7 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0001  15 Nov 2000	$cfg::pagerr defaults to `less -r` if PAGER=less
 # 1.0002  05 Dec 2000	Added 'sleep 1' to /D command; *bz2 support
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
+# 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
 
 ###############################################################################
 ## External configuration #####################################################
@@ -275,8 +276,9 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "\cT"	=> ['cfg::setset(@choose) && win',
 	    'append the chosen set to the current file set display'],
 "\cU"	=> ['clear; win', 'clear the chosen set or current set display'],
-"\cV"	=> ['msg "$vname $version; $cfg::vname $cfg::version"',
-	    'indicate the $vname software versions'],
+"\cV"	=> ['msg "$vname $version; $cfg::vname $cfg::version; "'
+	    . ' . $rl->ReadLine',
+	    'indicate the $vname software versions and packages'],
 "\cW"	=> ['cdhist "start"; win',
 	    'rewind and cd to the start of the directory history'],
 "\c["	=> ['win "<1"', 'shift the file display left one column'],
