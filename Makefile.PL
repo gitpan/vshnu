@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0107',	# package version; also ../*.html,
+	VERSION		=> '1.0115',	# package version; also ../*.html,
 					# mailing list?, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
@@ -37,6 +37,9 @@ WriteMakefile (
 # 1.0105  14 Jun 2002	Report $! from &sh and &shell; Added $stty_{cooked,raw}
 # 1.0106  25 Nov 2002	Support non-ANSI non-color terminals
 # 1.0107  23 Jan 2003	Fixed readline for prompts w/ non-visible characters
+# 1.0108  04 Jun 2003	Include ~/perl in @INC; Use HOSTNAME; Support .tnef
+# 1.0111  18 Jun 2003	Fixes for signals and readlines; Full versions support
+# 1.0115   3 Jul 2003	Use Sys::Hostname; Added insert-vshnu-chosen for rl
 
 sub MY::postamble { q~
 import:

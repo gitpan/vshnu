@@ -8,12 +8,14 @@
 # Many of the scripts and supporting external configurations used via this
 # file are available at http://www.cs.indiana.edu/~kinzler/home.html.
 
-# Items used only within this .vshnurc are placed in the rc:: package.
+# Names used only within this .vshnurc are placed in the rc:: package.
+# This file should be reloadable.
 
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0108 1.0103);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0116 1.0107);
+&addversions($rc::vname, $rc::version);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
      "($cfg::version)") if $rc::require != $cfg::version;
@@ -39,6 +41,14 @@
 # 1.0106  18 Nov 2002	Added K command for simple "make"
 # 1.0107  17 Dec 2002	Added "go image:" option to G command
 # 1.0108  01 Jan 2003	Added "go prod:" option to G command
+# 1.0109  03 Mar 2003	Added "go arc:" option to G command
+# 1.0110  05 Mar 2003	Added _ choose command for filename whitespace -> _
+# 1.0111  01 May 2003	Added browse+remove as edit for _comics_*.html files
+# 1.0112  20 May 2003	Added H command for simple "dailyh"
+# 1.0113  31 May 2003	added ReadLine package version to ^V command output
+# 1.0114  11 Jun 2003	Full versions support
+# 1.0115  19 Jun 2003	Correct $optons reloadability
+# 1.0116  27 Jun 2003	Updated pilot-file and install-memo usage
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -72,6 +82,10 @@ $typemap_{''}[0] = 'sh $cfg::editor, "--", $_; winch';
 $typemap_{  '/(^|\/)_[^_].*\.mbox$/'} = $typemap_do{'/(^|\/|\.)mbox$/'};
 $typemap_do{'/(^|\/)_[^_].*\.mbox$/'} = $typemap_{''};
 
+$typemap_{'/(^|\/)_comics_[^\/]*\.html?$/'} =
+	 ['sh "$ENV{HTMLVIEW} < $_q"; remove $_; win',
+	  'browse and remove this HTML file'];
+
 $rc::retrm = '; ret("Remove?") && remove $_; winch';
 ${ $typemap_do{'-d _'}[0]}[0] =~ s/ls -al(.*)--/lls$1--color=yes --/ if $color;
 (${$typemap_do{'-d _'}[0]}[3], ${$typemap_do{'-d _'}[1]}[3]) =
@@ -90,14 +104,14 @@ $typemap_do{'/\.e?ps$/i'} =
 $typemap_do{'/\.err$/'}	   = ['sh $cfg::editor, "-q", $_; winch',
 			      'quickfix edit based on this error file'];
 $typemap_do{'/\.html?$/i'} = ['sh "$ENV{HTMLVIEW} < $_q"; win',
-			      "browse this HTML file's contents"];
+			      'browse this HTML file'];
 $typemap_do{'/\.p(rc|db|qa)$/i'} =
-	[['shell "+palm; pilot-file -v -- $_q' . $cfg::page,
+	[['shell "+palm; pilot-file -d -- $_q' . $cfg::page,
 	  'view a dump of this Palm file', 'vVfF', 'view'],
 	 ['shell "+palm; exec pilot-xfer -i $_q"' . $rc::retrm,
 	  'download this file to a Palm',  'dDxX', 'download']];
-$typemap_do{'/\.url?$/'}    = ['sh "xrshio - webrowse -mw < $_q"; win',
-			       'browse this URL file marked up'];
+$typemap_do{'/\.url?$/'} = ['sh "xrshio - webrowse -mw < $_q"; win',
+			    'browse this URL file marked up'];
 $typemap_do{'4; /[Mm]akefile/'}[0] = 'shell getcmd "mak -f $_q"; ret; winch';
 $typemap_do{'9; ! -f _'}	   = ['sh "stat", "--", $_; ret; winch',
 				      'run `stat` on this special file'];
@@ -106,7 +120,7 @@ $typemap_do{''} =
 	   'view this file',		       'vV',   'view'],
 	  ['sh "sendfile", $_' . $rc::retrm,
 	   'mail this message file',	       'mMsS', 'mail'],
-	  ['shell "+palm; install-memo /dev/pilot -- $_q"' . $rc::retrm,
+	  [q/shell "+palm; install-memo -c '1) To Do' -- $_q"/ . $rc::retrm,
 	   'download this memo to a Palm',     'iI',   'download memo'],
 	  ['sh "enscript", "-Gh", "--", $_' . $rc::retrm,
 	   'print this text file',	       'pl',   'print'],
@@ -137,8 +151,6 @@ unshift(@{$keymap_{"\cQ"}},
 	['do $vshnurc; err $@; win', 'reload just the personal rc file '
 	 . '($vshnurc)', "rR\cR", 'load $vshnurc'])
 		unless $keymap_{"\cQ"}[0][2] =~ /r/i;
-$keymap_{"\cV"}[0] = 'msg "$vname $version; $cfg::vname $cfg::version;'
-		   . ' $rc::vname $rc::version; " . $rl->ReadLine';
 $keymap_{","}	   = ['evalnext \@rc::ring', 'cycle to monitored directories'];
 $keymap_{"A"}	   = ['longls "-win", "getfacls --"',
 		      'long list files with their Solaris ACL info'];
@@ -151,6 +163,9 @@ $keymap_{"G"}	   =
 	 ['sh "go", "url:" . gets "Go URL:"; winch',
 	  'browse the given URL',
 	  'uUkK', 'url (including Netscape Internet Keywords)'],
+	 ['sh "go", "arc:" . gets "Go Archive URL:"; winch',
+	  'browse historical versions of the given URL',
+	  'vV',   'url versions'],
 	 ['sh "grepbm", "-b", "-i", "--", gets "Go Regexp:"; winch',
 	  'browse the matched browser bookmarks',
 	  'bB',   'bookmarks'],
@@ -202,6 +217,7 @@ $keymap_{"G"}	   =
 	  'cC'],
 	 ['sh "webdaily", "-v"; winch', 'browse my daily web pages',
 	  'dD']];
+$keymap_{"H"}	 = ['sh "dailyh"; ret; winch', 'run `dailyh`'];
 $keymap_{"J"}	 =
 	[['sh "snaps -u' . $cfg::page,
 	  "list the user's current processes",	    'ujJ', 'user'],
@@ -242,10 +258,12 @@ $keymap_choose{"Z"}    = ['shell "z --", quote(@choose), "; ' . $cfg::shbeep
 			  . ' &"; sleep 1' . $cfg::unchoose,
 			  '(un)tar and (de)feather the chosen files'
 			  . ' and directories (background)'];
+$keymap_choose{"_"}    = ['shell "_", quote(@choose)' . $cfg::unchoose,
+			  'rename the chosen files without whitespace'];
 
 ###############################################################################
 ## "Options" keymap reconfiguration ###########################################
 
-$optons .= 's';
+$optons .= 's' unless $optons =~ /s/;
 
 1;

@@ -25,3 +25,7 @@ if ( $?vshtmp ) then
 endif
 
 clear
+
+# Pause a wee bit to prevent premature exitulation on fast computers,
+# which we hope are new enough to support sleeps < 1s.
+sleep .1 >& /dev/null

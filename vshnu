@@ -1,5 +1,6 @@
 #!/usr/bin/perl
-BEGIN { unshift @INC, "$ENV{'HOME'}/libp/perl", "$ENV{'HOME'}/lib/perl",
+BEGIN { unshift @INC, "$ENV{'HOME'}/perl",
+		      "$ENV{'HOME'}/libp/perl", "$ENV{'HOME'}/lib/perl",
 		      "$ENV{'HOME'}/libp",	"$ENV{'HOME'}/lib" }
 
 $default_vshnucfg = '';
@@ -15,7 +16,7 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0107);
+($vname, $version) = qw(vshnu 1.0115);
 
 # 1.0000  07 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -30,9 +31,17 @@ $debug_ch = 0;
 # 1.0105  14 Jun 2002	Added $stty_cooked and $stty_raw
 # 1.0106  25 Nov 2002	Support non-ANSI non-color terminals
 # 1.0107  23 Jan 2003	Fixed readline for prompts w/ non-visible characters
+# 1.0108   4 Jun 2003	Include ~/perl in @INC; Use HOSTNAME if no HOST
+# 1.0109  11 Jun 2003	Fixes for non-Gnu ReadLines; versions support
+# 1.0110  13 Jun 2003	Use only one ReadLine instance, fix history doubling
+# 1.0111  18 Jun 2003	Fixes for perl 5.8 safe signals and Gnu ReadLine resize
+# 1.0112  19 Jun 2003	Suppress consecutive duplicates in readline histories
+# 1.0113   1 Jul 2003	Suppress any program name label from long listings
+# 1.0114   2 Jul 2003	Added insert-vshnu-chosen Gnu ReadLine function
+# 1.0115   3 Jul 2003	Use Sys::Hostname if no HOST or HOSTNAME
 
 ###############################################################################
-## Initial setup ##############################################################
+## Modules setup ##############################################################
 
 $tmpcwd = (! defined $ENV{'VSHNUTMP'}) ? '' :
 	  (($ENV{'VSHNUTMP'} ne '') ? $ENV{'VSHNUTMP'}    : '/tmp') .
@@ -44,15 +53,17 @@ $tmpcwd =~ s:/+:/:g; $tmpenv =~ s:/+:/:g;
 
 require 5.002;
 
+use	Config;
+use	Sys::Hostname;
 eval	'use Data::Dumper';
 use	Term::ReadLine;	# setenv PERL_RL {Gnu,Perl,false}, dflt best available
 
 require Term::Screen;
 use	Term::ANSIColor;
 
-die "$0: stdin not a tty\n"			unless -t;
 die "usage: $0 [ dir ... ]\nVersion $version\n" if $ARGV[0] eq '-h';
 print("$version\n"), exit			if $ARGV[0] eq '-v';
+die "$0: stdin not a tty\n"			unless -t;
 
 $ch   = $ch_list = $err = $stty_cooked = $stty_raw = ''; $cooked = 0;
 $path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
@@ -71,9 +82,64 @@ $normal  = $scr->{TERM}->Tputs('me', 1) ||
 map($ansicolor{$Term::ANSIColor::attributes{$_} + 0} = $_,
     keys %Term::ANSIColor::attributes);
 
+&winch_off();
+$rl = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
+&winch_on();
+($rlmodule = $rl->ReadLine) =~ s/.*Term::ReadLine:://;
+$rl->ornaments(0) if $rlmodule =~ /^Stub/i;
+$rl->add_defun('insert-vshnu-chosen', \&rl_insert_vshnu_chosen)
+		  if $rlmodule eq 'Gnu';
+
+sub rl_insert_vshnu_chosen {
+        $rl->insert_text(join(' ', &quote(@choose)) . ' ');
+}
+
+sub rl_bind_insert_vshnu_chosen {
+	return unless $rlmodule eq 'Gnu';
+	$rl->parse_and_bind("$_[0]: insert-vshnu-chosen");
+}
+
+###############################################################################
+## Versions setup and subroutines #############################################
+
+@versions = (
+	'perl'			=> "$Config{'version'} $Config{'archname'}",
+	'Sys::Hostname'		=> $Sys::Hostname::VERSION,
+	'Data::Dumper'		=> $Data::Dumper::VERSION,
+	'Term::Screen'		=> $Term::Screen::VERSION,
+	'Term::ANSIColor'	=> $Term::ANSIColor::VERSION,
+	'Term::ReadLine'	=> $rlmodule,
+	$rl->ReadLine		=> $rl->ReadLine->VERSION,
+($rlmodule ne 'Gnu') ? () :
+       ('GNU Readline Library'	=> $rl->Attribs->{'library_version'}),
+	'ReadLine Features'	=> join(' ', sort keys %{$rl->Features}),
+	$vname			=> $version);
+%versions = @versions;
+do { local($n) = 1; @versions = grep($n++ % 2, @versions); };
+
+sub addversions {
+	while (@_) {
+		push(@versions, $_[0]), $versions{$_[0]} = $_[1]
+			unless exists $versions{$_[0]};
+		shift; shift;
+	}
+}
+
+sub versions {
+	my @v = (@_) ? @_ : @versions;
+	my $fmt = '%' . &max(map { length($_) } @v) . 's %s';
+	join("\n", map { sprintf($fmt, $_, $versions{$_}) } @v) . "\n";
+}
+
+###############################################################################
+## Initial setup ##############################################################
+
 $user  = &uid2name($>);
-($host = $ENV{'HOST'} || 'UNKNOWN') =~ s/\..*//;
+($host = $ENV{'HOST'} || $ENV{'HOSTNAME'} ||
+	 eval { &hostname } || 'UNKNOWN') =~ s/\..*//;
 $depth = 1;
+
+%keymap_ = ("\034" => ['last', 'quit $vname']);
 
 &setnorun('off'); &longlen('min'); $long = 0;
 require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
@@ -96,16 +162,6 @@ require "dumpvar.pl" if $debug;		# to enable &dumpvar(PACKAGE, VARS)
 ## Main execution loop and subroutines ########################################
 
 &win();
-
-&winch_off();		# ignore any WINCH signals from Gnu ReadLine
-# It's been observed that each "new" may return the same object.
-$rl	  = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
-$rlperl   = $rl->ReadLine eq 'Term::ReadLine::Perl';
-$rl_file  = ($rlperl) ? $rl : new Term::ReadLine 'vshnu file'  || $rl;
-$rl_shell = ($rlperl) ? $rl : new Term::ReadLine 'vshnu shell' || $rl;
-$rl_junk  = ($rlperl) ? $rl : new Term::ReadLine 'vshnu junk'  || $rl;
-undef $rlperl;
-&winch_on();
 
 while (1) {
 	$ch = $scr->getch();
@@ -555,8 +611,9 @@ sub color {
 # We assume the visible segment of the given colored text does not also
 # appear in either non-visible segment.
 sub rl_prompt_mark_ignore {
-	return $_[0] unless $_[0] ne '' && $_[0] =~ /^(.*)\Q$_[1]\E(.*)$/;
-	(($1 ne '') ? "\001$1\002" : '') . $_[1] . 
+	return $_[0] unless $rlmodule eq 'Gnu' &&
+			    $_[0] ne '' && $_[0] =~ /^(.*)\Q$_[1]\E(.*)$/;
+	(($1 ne '') ? "\001$1\002" : '') . $_[1] .
 	(($2 ne '') ? "\001$2\002" : '');
 }
 
@@ -979,17 +1036,18 @@ sub long {
 
 sub longfix {
 	local $_ = shift; my $label = shift; my $len = shift;
+	(my $prog = $long) =~ s/^\s+//; $prog =~ s/\s.*//;
 	chomp;
-	$label =~ s/\W/\\$&/g;
-	s/^$label(:\s*|\s+)//mg;
-	s/\s+$label$//mg;
+	s/^\Q$prog\E:\s*//mg;
+	s/^\Q$label\E(:\s*|\s+)//mg;
+	s/\s+\Q$label\E$//mg;
 	s/\s*$//mg;
 	&trunc(&view(&expandtabs($_)), $len);
 }
 
 sub longstr {
 	$! = 0;
-	my($Dev, $inode, $mode, $nlink, $uid, $gid, $Rdev, $size, 
+	my($Dev, $inode, $mode, $nlink, $uid, $gid, $Rdev, $size,
 	   $atime, $mtime, $ctime) = &opt('L') ? stat shift : lstat shift;
 	return &color(&trunc($!,	  $_[0]), $co_error) if $! + 0;
 	return &color(&trunc(readlink $_, $_[0]), $co_symln)
@@ -1298,12 +1356,12 @@ sub cmds {	# limited to 26 default keys (a-z), not guaranteed unique
 ###############################################################################
 ## Operation subroutines ######################################################
 
-sub get      { &getstr($rl,	  @_) }
-sub getshell { &getstr($rl_shell, @_) }
-sub getjunk  { &getstr($rl_junk,  @_) }
+sub get      { &getstr(@_) }
+sub getshell { &getstr(@_) }
+sub getjunk  { &getstr(@_) }
 
 sub getfile  {
-	local $_ = &getstr($rl_file, @_);
+	local $_ = &getstr(@_);
 	s/ $// unless s/\\ $/ /;	# clear space from filename completion
 	$_;
 }
@@ -1336,7 +1394,7 @@ sub ask {
 	&home();
 }
 
-sub shellp {	# run a command with perl if initial ";" else shell
+sub shellp {	# run a command with perl if initial ";" or ":" else shell
 	my $n = ($_[0] eq '-noecho') ? 1 : 0;
 	return &perl(@_) if $_[$n] =~ s/^[;:]//;
 	&shell(@_);
@@ -1399,8 +1457,26 @@ sub vardump {
 ###############################################################################
 ## System interface subroutines ###############################################
 
-sub sigs_off  { @SIG{qw/INT WINCH TSTP/} = qw/DEFAULT DEFAULT tstp/ }
-sub sigs_on   { @SIG{qw/INT WINCH TSTP/} = qw/IGNORE  winch   stop/ }
+# With perl 5.8's safe signals, vshnu's behavior when suspending from within
+# readline will differ.  With earlier perls, suspension is immediate.
+# With perl 5.8, the suspension is postponed until a return is typed
+# in readline.  This behavior is suboptimal, but tolerable.  I don't see
+# a way around it.
+
+# With perl 5.8's safe signals, vshnu's behavior when suspending from
+# within a subprocess will differ.  With earlier perls, continuation works
+# as expected.  With perl 5.8, continuation results in both vshnu and
+# the subprocess active and sharing input.  This behavior is problematic.
+# Hence the following kludge to set $SIG{'TSTP'} = 'DEFAULT' with perls
+# >= 5.8.  This works at the sacrifice of directory and environment
+# coordination between vshnu and its invoking shell when suspending from
+# a subprocess.
+
+sub sigs_off  { @SIG{qw/INT WINCH/} = qw/DEFAULT DEFAULT/;
+		$SIG{'TSTP'}	    = ($Config{'PERL_REVISION'} >  5 ||
+				       $Config{'PERL_VERSION'}  >= 8)
+						? 'DEFAULT' : 'tstp' }
+sub sigs_on   { @SIG{qw/INT WINCH TSTP/} = qw/IGNORE winch stop/ }
 sub winch_off { $SIG{'WINCH'} = 'DEFAULT' }
 sub winch_on  { $SIG{'WINCH'} = 'winch'   }
 
@@ -1414,11 +1490,16 @@ sub bakescr {
 	# can run `setty -istrip` in tcsh, at least, to prevent it
 	# from being changed in tcsh's context.  You may also define
 	# $stty_cooked and $stty_raw to make corrections.
+	#
+	# Should we use POSIX termios here instead of `stty`?
+	# See eg http://tit.irk.ru/perlbookshelf/cookbook/ch15_09.htm
+	# But Term::Screen is `stty` based ...
 }
 
 sub winch {
 	my $path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
 	$scr->resize();
+	eval { $rl->resize_terminal() };
 	$ENV{'PATH'} = $path;	# to get /usr/ucb/stty on Solaris
 	&cmdeval($onsub{'winch'}) if exists $onsub{'winch'};
 	&win(($_[0] == 1) ? () : ("\\$file0", "\\$file1", "\\$file1"));
@@ -1433,14 +1514,18 @@ sub getkey {
 }
 
 sub getstr {
-	my $rl = shift; my $str;
 	&bakescr($cooked = 1);
-	&winch_off();		# Gnu readline sometimes signals WINCH
-	$str = $rl->readline((! @_) ? '' : join(' ',
+	&winch_off();
+	my $str = $rl->readline((! @_) ? '' : join(' ',
+	    ($rlmodule ne 'Gnu') ? @_ :	# Perl RL breaks, but nice indic anyway
 	    map(&rl_prompt_mark_ignore(&color($_, $co_decor), $_), @_)) . ' ');
 	&winch_on();
 	&bakescr($cooked = 0);
-	$rl->addhistory($str) if $str =~ /\S/;
+	$rl->addhistory($str) if $str =~ /\S/
+			      && ! $rl->Features->{'autohistory'};
+	$rl->SetHistory(&uniq($rl->GetHistory))
+			      if $rl->Features->{'getHistory'}
+			      && $rl->Features->{'setHistory'};
 	$str . '';
 }
 
@@ -1642,8 +1727,8 @@ sub viewas {
 ###############################################################################
 ## General subroutines ########################################################
 
-sub min { ($_[0] <= $_[1]) ? $_[0] : $_[1] }
-sub max { ($_[0] >= $_[1]) ? $_[0] : $_[1] }
+sub min { my $x = shift; foreach (@_) { $x = ($x <= $_) ? $x : $_ } $x }
+sub max { my $x = shift; foreach (@_) { $x = ($x >= $_) ? $x : $_ } $x }
 
 sub ceil {
 	my $n = int $_[0];
@@ -1665,6 +1750,12 @@ sub aindex {
 		$n++;
 	}
 	($n > $#_) ? -1 : $n;
+}
+
+sub uniq {
+	my @r = ();
+	foreach (@_) { unshift(@r, $_) if ! @r || $r[0] ne $_ }
+	reverse @r;
 }
 
 sub seqshort {

@@ -7,13 +7,14 @@ $default_vshnurc = '';
 # see website http://www.cs.indiana.edu/~kinzler/vshnu/
 # http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
 
-# Items used only within and below this .vshnucfg are placed in the cfg::
-# package.
+# Names used only within and below this .vshnucfg are placed in the cfg::
+# package.  This file should be reloadable.
 
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0103 1.0103);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0107 1.0103);
+&addversions($cfg::vname, $cfg::version);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
@@ -32,6 +33,10 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0100  29 Mar 2002	Moved Y command to U, added Y as tree list cwd
 # 1.0101  01 Apr 2002	Enhanced directory actions, use ifopt
 # 1.0103  16 Apr 2002	Added ^_ command for variable listing
+# 1.0104  13 Mar 2003	Added list and extract actions for tnef files
+# 1.0105  31 May 2003	Added ReadLine package version to ^V command output
+# 1.0106  11 Jun 2003	Full versions support including ^V command
+# 1.0107   2 Jul 2003	Added binding for Gnu ReadLine insert-vshnu-chosen
 
 ###############################################################################
 ## External configuration #####################################################
@@ -127,6 +132,8 @@ $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 			    'act on <FILE> by its type'],
 	'choose'	=> ['point <KEY>; choose <FILE>', 'choose <FILE>'],
 );
+
+&rl_bind_insert_vshnu_chosen('M-v');	# Gnu ReadLine only
 
 ###############################################################################
 ## Typemap configuration ######################################################
@@ -236,6 +243,13 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    ['sh "tar -xpvf $_q' . $cfg::page,
 		     'extract this entire tar archive',
 		     'xX',   'extract all']],
+'/(\.tnef|^winmail\.dat)$/i'
+		=> [['sh "tnef -tv -- $_q' . $cfg::page,
+		     'list the contents of this tnef archive',
+		     'tTlL', 'list contents'],
+		    ['sh "tnef", "-wv", "--", $_; ret; winch',
+		     'extract this tnef archive',
+		     'xX',   'extract']],
 '/\.uu$/'	=> [['sh "uudecode -p -- $_q' . $cfg::page,
 		     'view this uuencoded file',    'vVpP', 'view'],
 		    ['sh "uudecode -- $_q"; ret; winch',
@@ -302,9 +316,8 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "\cT"	=> ['cfg::setset(@choose) && win',
 	    'append the chosen set to the current file set display'],
 "\cU"	=> ['clear; win', 'clear the chosen set or current set display'],
-"\cV"	=> ['msg "$vname $version; $cfg::vname $cfg::version; "'
-	    . ' . $rl->ReadLine',
-	    'indicate the $vname software versions and packages'],
+"\cV"	=> ['perl "print versions"; ret; winch',
+	    'list the $vname software versions and packages'],
 "\cW"	=> ['cdhist "start"; win',
 	    'rewind and cd to the start of the directory history'],
 "\c["	=> ['win "<1"', 'shift the file display left one column'],
