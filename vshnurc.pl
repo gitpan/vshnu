@@ -16,7 +16,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0005 1.0004);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0007 1.0009);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
      "($cfg::version)") if $rc::require != $cfg::version;
@@ -26,6 +26,8 @@
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
 # 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
 # 1.0005  26 Jan 2001	Appended "=yes" to "--color"s
+# 1.0006  27 Apr 2001	Improved Slashdot interface
+# 1.0007  29 May 2001	Added "go perl:" option to G command
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -46,8 +48,8 @@ $cfg::pagerr = 'less -R';	# raw pager for colored text
 
 $co_decor = 'on_magenta' if $color && $> && $user ne 'kinzler';
 
-delete $co_user{$user}, @co_user{'kinzler', 'oracle'} = ('blue', 'magenta')
-	if $color;
+delete $co_user{$user}, @co_user{'kinzler', 'oracle',  'uoracle'} =
+				('blue',    'magenta', 'magenta') if $color;
 
 ###############################################################################
 ## Typemap reconfiguration ####################################################
@@ -79,10 +81,10 @@ $typemap_do{'/\.p(rc|db)$/i'} =
 	  'view a dump of this Palm file', 'vVfF', 'view'],
 	 ['shell "+palm; exec pilot-xfer -i $_q"; ret; winch',
 	  'download this file to a Palm',  'dDxX', 'download']];
-$typemap_do{'/\.url?$/'} = ['sh "xrshio - webrowse -mw < $_q"; win',
-			    'browse this URL file marked up'];
-$typemap_do{'/^slashdot$/'}	   = ['sh "slashdot | mail $user"; win',
-				      'mail me the Slashdot articles list'];
+$typemap_do{'/\.url?$/'}    = ['sh "xrshio - webrowse -mw < $_q"; win',
+			       'browse this URL file marked up'];
+$typemap_do{'/^slashdot$/'} = ['sh "slashdot | xrshio - inbrowse -aw"; win',
+			       'browse the Slashdot articles list'];
 $typemap_do{'4; /[Mm]akefile/'}[0] = 'shell getcmd "mak -f $_q"; ret; winch';
 $typemap_do{'9; ! -f _'}	   = ['sh "stat", "--", $_; ret; winch',
 				      'run `stat` on this special file'];
@@ -116,7 +118,7 @@ $keymap_{"C"}	   = ['longls "-win", "listacls"',
 $keymap_{"G"}	   =
 	[['shell getcmd "go"; winch',
 	  'browse the URL guessed from the given piece(s)',
-	  'gGpP', 'url pieces'],
+	  'gG',   'url pieces'],
 	 ['sh "go", "url:" . gets "Go URL:"; winch',
 	  'browse the given URL',
 	  'uUkK', 'url (including Netscape Internet Keywords)'],
@@ -135,10 +137,13 @@ $keymap_{"G"}	   =
 	 ['sh "go", "word:" . gets "Go Word:"; winch',
 	  'browse the results for the given dictionary query',
 	  'wW',   'word (Dictionary)'],
+	 ['sh "go", "perl:" . gets "Go Perl:"; winch',
+	  'browse the results for the given perl documentation query',
+	  'pP',   'perl (Perldoc)'],
 	 ['sh "webrowse", "-w", getfile("Go File (.):") || $cwd; winch',
 	  'browse the given file or directory (default current directory)',
 	  'fFdD', 'file (default current directory)']];
-$keymap_{"J"}	   =
+$keymap_{"J"}	 =
 	[['sh "snaps -u' . $cfg::page,
 	  "list the user's current processes",	    'ujJ', 'user'],
 	 ['sh "snaps -s -l' . $cfg::page,
@@ -147,11 +152,13 @@ $keymap_{"J"}	   =
 	  "tree list the user's current processes", 'UtT', 'user tree'],
 	 ['sh "pstree -alp' . $cfg::page,
 	  'tree list all system processes',	    'S',   'system tree']];
-$keymap_{"M"}[0]   = 'shell getcmd "mak"; ret; winch';
-$keymap_{"N"}	   = ['sh "nn"; winch', 'run `nn`'];
-$keymap_{"^"}	   = ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
-		   .  ' point "-\$"; win',
-		      "cd to the user's working directory"];
+$keymap_{"M"}[0] = 'shell getcmd "mak"; ret; winch';
+$keymap_{"N"}	 = ['sh "nn"; winch', 'run `nn`'];
+$keymap_{"S"}	 = ['sh "slashdot update"; ' . $typemap_do{'/^slashdot$/'}[0],
+		    'update and ' . $typemap_do{'/^slashdot$/'}[1]];
+$keymap_{"^"}	 = ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
+		 .  ' point "-\$"; win',
+		    "cd to the user's working directory"];
 
 ###############################################################################
 ## "Choose" keymap reconfiguration ############################################

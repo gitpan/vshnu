@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0005',	# package version
+	VERSION		=> '1.0009',	# package version
 					# also ../*.html, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
@@ -22,6 +22,10 @@ WriteMakefile (
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z; s/.pm// in libperl
 # 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
 # 1.0005  26 Jan 2001	Use most specific LS_COLORS match and "--color=yes"
+# 1.0006  27 Apr 2001	Improved Slashdot interface in vshnurc
+# 1.0007  29 May 2001	Recognize .\d\w exts as man pages; "go perl:" support
+# 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
+# 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
 
 sub MY::postamble { q~
 import:

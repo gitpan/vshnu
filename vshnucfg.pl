@@ -13,7 +13,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0004 1.0003);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0009 1.0003);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
     "($version)\r\n" if $cfg::require > $version;
@@ -23,6 +23,9 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0002  05 Dec 2000	Added 'sleep 1' to /D command; *bz2 support
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
 # 1.0004  25 Jan 2001	Added ReadLine package to ^V command output
+# 1.0007  25 May 2001	Recognize .\d\w extensions as man pages
+# 1.0008  06 Jun 2001	Added `rpm -Fhv` freshen option for rpm files
+# 1.0009  15 Jun 2001	Added loading of .vshnu* files via typemap
 
 ###############################################################################
 ## External configuration #####################################################
@@ -160,7 +163,8 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		     'tree list this directory',	     'tT', 'tree']],
 '/(^|\.)mbox$/'	=> ['sh "mail", "-f", $_; winch',
 		    'run `mail` on this mailbox file'],
-'/\.(\d|man)$/'	=> ['sh "nroff -man < $_q | $cfg::pagerr"; winch',
+'/\.(\d\w?|man)$/'
+		=> ['sh "nroff -man < $_q | $cfg::pagerr"; winch',
 		    'view this man page formatted'],
 '/\.(au|snd|wav)$/'
 		=> ['xshell "xanim -- $_q"; win', 'play this audio file'],
@@ -197,7 +201,9 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 '/\.rpm$/'	=> [['sh "rpm -qisp -- $_q' . $cfg::page,
 		     'view the info of this RPM package', 'qQ', 'query'],
 		    ['sh "rpm", "-ihv", "--", $_; ret; winch',
-		     'install this RPM package',	  'iI', 'install']],
+		     'install this RPM package',	  'iI', 'install'],
+		    ['sh "rpm", "-Fhv", "--", $_; ret; winch',
+		     'freshen this RPM package',	  'fF', 'freshen']],
 '/\.t(a(r\.?)?)?bz2$/i'
 		=> ['sh "bzip2 -d < $_q | tar -tvf -' . $cfg::pagea,
 		    'list the contents of this bzip2 tarball'],
@@ -217,6 +223,8 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		     'view this uuencoded file',    'vVpP', 'view'],
 		    ['sh "uudecode -- $_q"; ret; winch',
 		     'extract this uuencoded file', 'xX',   'extract']],
+'/\.vshnu(cfg|rc)$/'
+		=> ['do $_q; err $@; win', 'load this vshnu config file'],
 '/\.xcf$/'	=> ['xshell "gimp $_q"; win',
 		    'load this image file into `gimp`'],
 '/\.xwd$/'	=> ['xshell "xwud -in $_q"; win', 'display this window dump'],
