@@ -14,7 +14,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0124 1.0132);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0129 1.0140);
 &addversions($rc::vname, $rc::version);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
@@ -57,30 +57,28 @@
 # 1.0122  15 Sep 2004	Replace AskJeeves with A9 for "go ask:"
 # 1.0123  22 Nov 2004	Add `txt2pdbdoc -d` action option for pdb files
 # 1.0124  28 Nov 2004	Run ^Y on Y command run in ~/work
+# 1.0125  18 Mar 2005	Add &rc::edtags and use for ^K command completions
+# 1.0126  18 Mar 2005	Add text view as edit for .doc and .xls files
+# 1.0127  11 Apr 2005	Make external reconfig dependent on tcsh/less presence
+# 1.0128  14 Apr 2005	Delete pager[ar] config; No color reconfig if ! kinzler
+# 1.0129  17 Apr 2005	Add &rccolorlong for getfacls and listacls
 
 ###############################################################################
 ## External reconfiguration ###################################################
 
-$shell = 'tcsh';		# for use by &shell
+`tcsh -f /dev/null`;
+$shell = 'tcsh' unless $?;		# for use by &shell
 
-$stty_cooked = '-istrip';	# corrections to `stty -raw echo`
-
-$cfg::pagera = 'less';		# pager that can display text as available
-$cfg::pagerr = 'less -R';	# raw pager for colored text
-#cfg::pagerr = 'less -r';	#   for older versions of less
-
-# Tip: When viewing a vshnu help listing with `less`, you can save the
-# listing into a FILE with one of these `less` commands:
-#	keep color:	g|$cat > FILE<Ret>
-# or	 uncolored:	g|$sed 's/<Ctrl-V><Esc>[^m]*m//g' > FILE<Ret>
+$stty_cooked = '-istrip';		# corrections to `stty -raw echo`
 
 ###############################################################################
 ## Color reconfiguration ######################################################
 
-$co_decor = 'on_magenta' if $color && $> && $user ne 'kinzler';
-
-delete $co_user{$user}, @co_user{'kinzler', 'oracle',  'uoracle'} =
-				('blue',    'magenta', 'magenta') if $color;
+if ($color && getpwnam('kinzler')) {
+	$co_decor = 'on_magenta' if $> && $user ne 'kinzler';
+	delete $co_user{$user}, @co_user{'kinzler', 'oracle',  'uoracle'} =
+					('blue',    'magenta', 'magenta');
+}
 
 ###############################################################################
 ## Typemap reconfiguration ####################################################
@@ -93,6 +91,10 @@ $typemap_do{'/(^|\/)_[^_].*\.mbox$/'} = $typemap_{''};
 $typemap_{'/(^|\/)_comics_[^\/]*\.html?$/'} =
 	 ['sh "$ENV{HTMLVIEW} < $_q"; remove $_; win',
 	  'browse and remove this HTML file'];
+$typemap_{'/\.doc$/i'} = ['shell "doctxt -- $_q'  . $cfg::page,
+			  'view a text conversion of this Word file'];
+$typemap_{'/\.xls$/i'} = ['shell "xls2tsv -- $_q' . $cfg::page,
+			  'view a text conversion of this Excel file'];
 
 $rc::retrm = '; ret("Remove?") && remove $_; winch';
 ${$typemap_do{'-d _'}[0]}[0] =~ s/"--/ifopt("C", "--color"), "--/;
@@ -156,8 +158,9 @@ $cfg::quemarkmsg = '';
 		'cd("~oracle/post") ? longls("-win", 1) : win',
 	     'cd "~/work"; win');
 
-$keymap_{"\cK"}	   = ['sh $cfg::editor, "-t", get "Tag:"; winch',
-		      'edit in the file for the given tag'];
+$keymap_{"\cK"}	   = ['setcomplete \&rc::edtags;'
+		      . ' sh $cfg::editor, "-t", get "Tag:"; setcomplete;'
+		      . ' winch', 'edit in the file for the given tag'];
 $keymap_{"\cL"}[0] = 'point "-\$"; winch';
 unshift(@{$keymap_{"\cQ"}},
 	['do $vshnurc; err $@; win', 'reload just the personal rc file '
@@ -165,7 +168,7 @@ unshift(@{$keymap_{"\cQ"}},
 		unless $keymap_{"\cQ"}[0][2] =~ /r/i;
 $keymap_{","}	   = ['evalnext \@rc::ring', 'cycle to monitored directories'];
 $keymap_{"A"}	   = ['longls "-win", "getfacls --"',
-		      'long list files with their Solaris ACL info'];
+		      'long list files with their POSIX ACL info'];
 $keymap_{"C"}	   = ['longls "-win", "listacls"',
 		      'long list files with their AFS ACL info'];
 $keymap_{"G"}	   =
@@ -210,7 +213,7 @@ $keymap_{"G"}	   =
 	  'hH',   'user (U-M Directory)'],
 	 ['sh "go", "city:" . gets "Go City:"; winch',
 	  'browse the results for the given city map query',
-	  'yY',   'city (MapQuest)'],
+	  'yY',   'city (City-Data)'],
 	 ['sh "go", "book:" . gets "Go Book:"; winch',
 	  'browse the results for the given bookstore query',
 	  'zZ',   'book (Amazon)'],
@@ -287,5 +290,37 @@ $keymap_choose{"_"}    = ['shell "_", quote(@choose)' . $cfg::unchoose,
 ## "Options" keymap reconfiguration ###########################################
 
 $optons .= 's' unless $optons =~ /s/;
+
+###############################################################################
+## Subroutines ################################################################
+
+sub rccolorlong {
+	local $_ = join('', @_);
+	my $rwx = '[-r][-w][-x]';
+	s/\b(?:(d)(:))?([ugmo]):(?:(\w*)(:))?($rwx)(?:(#)($rwx))?/
+		&color($1, $co_sbits)			 . $2  .
+		&color($3, $co_ftype)			 . ':' .
+		&color($4, $co_user{$4} || $co_user{''}) . $5  .
+		&color($6, $co_perms)			 . $7  .
+		&color($8, $co_myper)/ge if $long =~ /^\s*getfacls\b/;
+	s/([^\\\s]+) (r?l?i?d?w?k?a?)(, |\\|$)/
+		&color($1, $co_user{$1} || $co_user{''}) . ' ' .
+		&color($2, $co_perms)			 . $3
+				     /ge if $long =~ /^\s*listacls\b/;
+	$_;
+}
+
+sub rc::edtags {
+	my %tags = ();
+	foreach my $tags ('tags', 'etc/tags', "$ENV{HOME}/etc/tags") {
+		next unless open(TAGS, $tags);
+		while (<TAGS>) {
+			next if /^!_TAG_/;
+			chomp; s/\t.*//; $tags{$_}++;
+		}
+		close TAGS;
+	}
+	sort keys %tags;
+}
 
 1;

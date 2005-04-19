@@ -13,7 +13,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0132 1.0128);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0140 1.0136);
 &addversions($cfg::vname, $cfg::version);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
@@ -62,19 +62,43 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0130  28 Nov 2004	Add sort by path depth option
 # 1.0131  12 Dec 2004	Drop .tsv extension for office files
 # 1.0132  31 Jan 2005	Use &expand, &collapse and &expandtoggle aliases
+# 1.0133  13 Feb 2005	Add &cfg::abssets to maintain filesets across cd's
+# 1.0134  20 Feb 2005	Revise X command for chosen files options vs lsall
+# 1.0135  18 Mar 2005	Add user@host:file choice to X command menu
+# 1.0136  14 Apr 2005	Use new rules for default pagers, see comments below
+# 1.0137  14 Apr 2005	Add 6 command for disks file set df display
+# 1.0138  15 Apr 2005	Add $full threshold for df coloring, skel &cfgcolorlong
+# 1.0139  17 Apr 2005	Add long coloring for md5sum and rpm
+# 1.0140  18 Apr 2005	Add text view and info action options for .pdf files
 
 ###############################################################################
 ## External configuration #####################################################
 
 $cfg::editor = $ENV{VISUAL} || $ENV{EDITOR} || 'vi';
 
-$cfg::pager  = $ENV{PAGER}  || 'more';
+# $cfg::pager	normal pager
+#		default $PAGER  or less or more
+# $cfg::pagera	pager that can display text as available
+#		default $PAGERA or less or more
+# $cfg::pagerr	raw pager for colored text
+#		default $PAGERR or `less -R` or `less -r` or more
+
+$cfg::pager  = do { `less -V > /dev/null 2>&1`; ($?) ? 'more' : 'less' };
 $cfg::pager .= "; echo Press Return | tr -d '\\012'; sh -c 'read x' < /dev/tty"
-	if $cfg::pager  =~ /\bmore\b/ && $cfg::pager  !~ /\s-\S*w/;
-$cfg::pagera = $cfg::pager;	# pager that can display text as available
-$cfg::pagerr = $cfg::pager;	# raw pager for colored text
-$cfg::pagerr.= ' -r'
+	if $cfg::pager  eq 'more';
+$cfg::pagera = $ENV{PAGERA} || $cfg::pager;
+$cfg::pagerr = $ENV{PAGERR} || $cfg::pager;
+$cfg::pagerr.= do { `less -R /dev/null > /dev/null 2>&1`;
+		    ($?) ? ' -r' : ' -R' }
 	if $cfg::pagerr =~ /\bless\b/ && $cfg::pagerr !~ /\s-\S*r/i;
+$cfg::pager  = $ENV{PAGER}  || $cfg::pager;
+$cfg::pager .= "; echo Press Return | tr -d '\\012'; sh -c 'read x' < /dev/tty"
+	if $cfg::pager  =~ /\bmore\b/ && $cfg::pager  !~ /(\s-\S*w|Press)/;
+
+# Tip: When viewing a vshnu help listing with `less`, you can save the
+# listing into a FILE with one of these `less` commands:
+#	keep color:	g|$cat > FILE<Ret>
+# or	 uncolored:	g|$sed 's/<Ctrl-V><Esc>[^m]*m//g' > FILE<Ret>
 
 $mailbox     = $ENV{MAIL};
 @bak	     = qw/~$/;		# regexps identifying backup files
@@ -131,6 +155,7 @@ $co_xuse  = ($color) ? 'on_green'    : 'reverse';	# unused
 ## General configuration ######################################################
 
 $aged	     = '12h';			# time old to be considered aged
+$full	     = '90';			# % disk full warning threshold
 $minfilelen  = 15;			# including any tag, recommend <=18
 $maxfilecols = 0;			# 0 => as many as possible
 $maxcdhist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
@@ -145,7 +170,7 @@ $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 # to be eval()ed as double-quoted.
 
 %onsub = (
-	'cd'		=> 'altls',
+	'cd'		=> 'altls; cfg::abssets $cdhist[1]{ls}',
 	'altls'		=> 'longls',
 	'winch'		=> 'longls',
 );
@@ -252,11 +277,11 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'play this video file'],
 '/\.(bmp|gif|ico|jpe?g|p[bgp]m|pcx|png|tiff?|x[bp]m)$/i'
 		=> ['xshell "display $_q"; win', 'display this image file'],
-'/\.(dir|pag)$/'=> ['sh "makedbm -u $_rq' . $cfg::page,
-		    'view a dump of this dbm file'],
 '/\.(csv|doc|ppt|rtf|st[cdiw]|sx[cdgimw]|xls)$/i'
 		=> ['xshell "ooffice -- $_q"; win',
 		    'load this file into OpenOffice'],
+'/\.(dir|pag)$/'=> ['sh "makedbm -u $_rq' . $cfg::page,
+		    'view a dump of this dbm file'],
 '/\.(mp3|ogg|wav)$/'
 		=> ['xshell "xmms -p -e -- $_q"; win',
 		    'play this MP3/Ogg/WAV audio file'],
@@ -290,7 +315,13 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 '/\.lyx$/'	=> ['xshell "lyx $_q"; win', 'load this file into LyX'],
 '/\.o$/'	=> ['sh "nm -- $_q' . $cfg::page,
 		    'view the name list of this object file'],
-'/\.pdf$/i'	=> ['xshell "xpdf -q -- $_q"; win', 'display this PDF file'],
+'/\.pdf$/i'	=> [['xshell "xpdf -q -- $_q"; win',
+		     'display this PDF file',	     'dDrR', 'display'],
+		    ['shell "pdftotext -layout -nopgbrk -- $_q -' . $cfg::page,
+		     'view a text conversion of this PDF file',
+						     'tTvV', 'view as text'],
+		    ['shell "pdfinfo -- $_q"; ret; winch',
+		     'view the info of this PDF file', 'iI', 'info']],
 '/\.pgp$/'	=> ['sh "pgp -- $_q"; ret; winch', 'decrypt this PGP file'],
 '/\.prm$/'	=> ['sh "openssl dsaparam -noout -text -in $_q' . $cfg::page,
 		    'view this SSL parameter file'],
@@ -415,7 +446,10 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	     'dD', 'depth limit ($depth)'],
 	    ['$where = gets "Where {$where}:"; winch',
 	     'set the where clause {$where} for display subsets',
-	     'wW', 'where clause {$where}']],
+	     'wW', 'where clause {$where}'],
+	    ['$full = gets "Full ($full):"; winch',
+	     'set the % disk full warning threshold ($full) for df coloring',
+	     'fF', '% disk full threshold ($full)']],
 "\$"	=> ['shellv "Shell"; winch',
 	    'run a series of shell (or ;perl) commands, `v` to exit'],
 "%"	=> ['help "-unused", $cfg::pagerr; winch',
@@ -448,6 +482,9 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'switch to/from the fourth file set display'],
 "5"	=> ['longls "-win", "md5sum -- \@_ 2>&1"',
 	    'long list files with their `md5sum` output'],
+"6"	=> ['@cfg::disks = disks, longls "-win", ";diskspace"'
+	    . ' if altls \@cfg::disks, "Disks"; win',
+	    'switch to/from the disks file set df display'],
 "9"	=> ['helpmarks $cfg::pagerr; winch', 'list the defined marks'],
 ":"	=> ['shellp getshell "Shell:"; ret; winch',
 	    'run a shell (or ;perl) command, leaving output'],
@@ -469,23 +506,29 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "O"	=> ['keymap "opts"', 'push to option key mode'],
 "P"	=> ['longls "-win", "rpm -qf -- \$_ 2>&1"',
 	    'long list files with their owning RPM package'],
-"Q"	=> ['longls "-win", getshell "Command:"',
+"Q"	=> ['longls "-win", gets "Command:"',
 	    'long list files with the queried shell command output'],
 "T"	=> ['sh "top -S"; winch', 'run `top -S`'],
 "U"	=> ['collapse lsall; win', 'collapse all the display files'],
 "V"	=> ['stop; winch', 'suspend to the master shell'],
 "X"	=> [['pipeto "xcb -s 0", $cwd',
 	     'copy the current directory to X cut buffer 0',
-	     'dDcC', 'current directory'],
+	     '.',   'current directory'],
 	    ['pipeto "xcb -s 0", "$user\@$host:$cwd"',
 	     'copy user\@host:dir to X cut buffer 0',
-	     'uUhH', 'user\@host:dir'],
+	     'dD',  'user\@host:dir'],
 	    ['pipeto "xcb -s 0", absfile $point',
 	     'copy the point file to X cut buffer 0',
-	     'pP>',  'point file'],
-	    ['pipeto "xcb -s 0", join("\n", lsall)',
-	     'copy all the display files to X cut buffer 0',
-	     'fFlL', 'display files']],
+	     '>pP', 'point file'],
+	    ['pipeto "xcb -s 0", "$user\@$host:" . absfile $point',
+	     'copy the point file to X cut buffer 0',
+	     'fF',  'user\@host:file'],
+	    ['pipeto "xcb -s 0", join(" ", map { absfile $_ } @choose)',
+	     'copy the chosen files to X cut buffer 0, one-line',
+	     'c\\', 'chosen files, one-line'],
+	    ['pipeto "xcb -s 0", join("\n", map { absfile $_ } @choose)',
+	     'copy the chosen files to X cut buffer 0, multi-line',
+	     'C/',  'chosen files, multi-line']],
 "Y"	=> ['expand lsall; win',    'expand all the display files'],
 "["	=> ['expand $point; win',   'expand the point file'],
 "\\"	=> ['cdhist "back"; win', 'cd back to the prior directory'],
@@ -511,7 +554,7 @@ $keymap_{"ins"}	 = $keymap_{"\cI"};
 $keymap_{"del"}	 = $keymap_{"\177"} = $keymap_{"\cH"};
 $keymap_{"home"} = $keymap_{"~"};	# potential protocol escape char
 $keymap_{"end"}	 = $keymap_{"\c["};	# potential protocol escape char
-# numbered function keys might be usable as "k1" through "k12"
+# numbered function keys might be usable as "k1"-"k12" or "k0"-"k9"
 
 ###############################################################################
 ## "Choose" keymap configuration ##############################################
@@ -639,6 +682,16 @@ undef %cfg::desc_opts;
 
 sub onquit { 1; }
 
+sub cfgcolorlong {
+	local $_ = join('', @_); my $s;
+	($s = &rccolorlong($_)) ne '' && ($_ = $s) if defined &rccolorlong;
+	$_ = &colorlongline($_, $co_error)
+		if $long =~ /^\s*md5sum\b/ && ! /^\\?[0-9a-f]*\\?$/i;
+	$_ = &colorlongline($_, $co_msg)
+		if $long =~ /^\s*rpm\b/    &&   /is ?n[o']t owned/i;
+	$_;
+}
+
 sub cfg::pointorcd {
 	grep($_[0] eq $_, @bagkeys) ? &point($_[0]) :
 	(&cd(&getmark($_[0])) == 1) ? &beep()	    : 1;
@@ -647,6 +700,12 @@ sub cfg::pointorcd {
 sub cfg::setset {
 	grep($altls == $_, \@cfg::set1, \@cfg::set2, \@cfg::set3, \@cfg::set4)
 		? do { push(@$altls, @_); 1 } : do { &beep(); 0 };
+}
+
+sub cfg::abssets {
+	foreach (\@cfg::set1, \@cfg::set2, \@cfg::set3, \@cfg::set4) {
+		map(/^\// || do { $_ = &absfile($_, $_[0]) }, @$_);
+	}
 }
 
 ###############################################################################

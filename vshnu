@@ -16,7 +16,7 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0128);
+($vname, $version) = qw(vshnu 1.0136);
 
 # 1.0000   7 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -52,6 +52,14 @@ $debug_ch = 0;
 # 1.0126  27 Nov 2004	Add &filecounts and &filecount
 # 1.0127  28 Nov 2004	Color file paths as directories; Add sort bydepth
 # 1.0128  31 Jan 2005	Add &expand, &collapse and &expandtoggle aliases
+# 1.0129   1 Feb 2005	Workaround Term::Screen 1.03 "fixes"; Use English
+# 1.0130   7 Feb 2005	Add &sttyfix to abstract Solaris stty workarounds
+# 1.0131  20 Feb 2005	Enhance &long for perl commands; Fix &diskspace bug
+# 1.0132  18 Mar 2005	Add &setcomplete for custom ReadLine completions
+# 1.0133  29 Mar 2005	Show actual \ as \\ in &view; Fix &lsdir buglet
+# 1.0134  14 Apr 2005	Identify shell in &shell error messages
+# 1.0135  14 Apr 2005	Align &diskspace output; Strip up-mode keys from UNUSED
+# 1.0136  15 Apr 2005	Add &colorlong*, &cfgcolorlong, &colordiskspace, $full
 
 ###############################################################################
 ## Modules setup ##############################################################
@@ -67,6 +75,7 @@ $tmpcwd =~ s:/+:/:g; $tmpenv =~ s:/+:/:g;
 require 5.002;
 
 use	Config;
+use	English '-no_match_vars';
 use	Sys::Hostname;
 eval	'use Data::Dumper';
 eval	'use Filesys::DiskFree';
@@ -143,10 +152,10 @@ print(&versions()), exit if $ARGV_V;
 ###############################################################################
 ## Initial setup ##############################################################
 
-$ch   = $ch_list = $err = $stty_cooked = $stty_raw = ''; $cooked = 0;
-$path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
-$scr  = new Term::Screen or die "$0: cannot create screen ($!)";
-$ENV{'PATH'} = $path; undef $path;	# to get /usr/ucb/stty on Solaris
+$ch	= $ch_list = $err = $stty_cooked = $stty_raw = ''; $cooked = 0;
+&sttyfix(1);
+$scr	= new Term::Screen or die "$0: cannot create screen ($!)";
+&sttyfix();
 $scr->noecho();
 &sigs_on();
 
@@ -449,7 +458,8 @@ sub win_long {
 		}
 	} else {
 		foreach (&long($longlen, @{$lstable[0]})) {
-			$scr->at($row++, $filelen + 4)->clreol()->puts($_);
+			$scr->at($row++, $filelen + 4)->clreol()
+			    ->puts($_);
 		}
 	}
 }
@@ -750,7 +760,7 @@ sub colorkey {
 
 sub colorcmd {
 	local $_ = join('', @_);
-	return &color($_, $co_desc) if s/^\\//;
+	return &color($_, $co_desc) if s/^\\\\?//;
 	my $re   = join('|', @tail); my $tail = '';
 	my $com  = (s/(^|\s)(#.*)/$1/) ? $2 : '';
 	eval { $tail = ($re && s/((^|;)\s*)((($re)\s*(;|$)\s*)+)$/$1/)
@@ -759,6 +769,21 @@ sub colorcmd {
 	$tail = &color($tail, $co_tail) if $co_tail && $tail ne '';
 	$_    = &color($_,    $co_cmd)  if $co_cmd  && $_    ne '';
 	"$_$tail$com";
+}
+
+sub colorlong {
+	local $_ = join('', @_); my $s;
+	($s = &cfgcolorlong($_)) ne '' && ($_ = $s) if defined &cfgcolorlong;
+	$_  = &colordiskspace($_) if $long =~ /^\s*;.*diskspace/;
+	s/(^\\|\\$)/&color($&, $co_tail)/ge;
+	s/\b(error|warning|fail(ure|ed))\b[\t -~]*/&color($&, $co_error)/ige;
+	$_;
+}
+
+sub colorlongline {
+	local $_ = $_[0]; my $co = $_[1];
+	s/^(\\)?(.*?)(\\)?$/$1 . &color($2, $co) . $3/e;
+	$_;
 }
 
 ###############################################################################
@@ -998,7 +1023,7 @@ sub lsdir {
 		next if @_ && /^\.\.?$/;
 		$_ = $_[0] . ((! @_ || $_[0] =~ /\/$/) ? '' : '/') . $_;
 		push(@ls, $_);
-		push(@ls, &lsdir($_)) if $cdhist[0]{'expand'}{$_};
+		push(@ls, &lsdir($_)) if $cdhist[0]{'expand'}{$_} && -d $_;
 	}
 	@ls;
 }
@@ -1086,15 +1111,18 @@ sub long {
 		return @ret;
 	}
 
-	(my $cmd = $long) =~ s/\@_\b/join(' ', &quote(@_))/eg;
+	my $cmd = $long; my $p = $cmd =~ s/^[;:]//;
+	$cmd =~ s/\@_\b/join(' ', &quote(@_))/eg unless $p;
 	if ($long =~ /\$_\b/) {
 		foreach (@_) {
 			last if $_ eq '';
-			(my $c = $cmd) =~ s/\$_\b/&quote($_)/eg;
-			push(@ret, &longfix(scalar `$c`, $_, $len));
+			my $c = $cmd;
+			$c =~ s/\$_\b/&quote($_)/eg unless $p;
+			push(@ret, &longfix(($p) ? join(' ', eval $c)
+						 : scalar `$c`, $_, $len));
 		}
 	} else {
-		my @r = (@_) ? `$cmd` : ();
+		my @r = (! @_) ? () : ($p) ? eval $cmd : `$cmd`;
 		foreach (@_) {
 			last if $_ eq '';
 			push(@ret, &longfix(shift @r, $_, $len));
@@ -1111,7 +1139,7 @@ sub longfix {
 	s/^\Q$label\E(:\s*|\s+)//mg;
 	s/\s+\Q$label\E$//mg;
 	s/\s*$//mg;
-	&{$longtrunc}(&view(&expandtabs($_)), $len);
+	&colorlong(&{$longtrunc}(&view(&expandtabs($_)), $len));
 }
 
 sub longstr {
@@ -1343,7 +1371,8 @@ sub expdirs {
 sub help {	# -u* = list unused keys, -U* = list unused key ranges
 	my $unused = 0; $unused = shift if $_[0] =~ /^-u/i;
 	my $pager  = shift; my $tab = 8;
-	my($key, $val, @kmap, @tmap); my %list = (); my @list = ();
+	my($key, $val, @kmap, @tmap);
+	my %list = (); my @list = (); my %uplist = ();
 
 	eval "\@kmap = \%keymap_$keymap[$#keymap]";
 	eval "\@tmap = \%typemap_$typemap[$#typemap]";
@@ -1354,13 +1383,19 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 		unshift(@_, @tmap), $tab = 24, next if $key eq '%typemap';
 		$val = shift;
 		$list{$key} = $val unless exists $list{$key};
+
+		if ($key eq '' &&	# kludge, non-recursive
+		    $$val[0] =~ /^\W*cmdeval\W+keymapcmd\W+(\w*)\W*$/) {
+			eval "\%uplist = \%keymap_$1";
+		}
 	}
 
 	foreach (sort bykeyorder keys %list) {
 		push(@list, &helpstr($_, '', $tab, $list{$_})) }
 
 	if ($unused) {
-		my @seq = grep(! exists $list{pack('c', $_)}, 001 .. 0177);
+		my @seq = grep(! exists   $list{pack('c', $_)} &&
+			       ! exists $uplist{pack('c', $_)}, 001 .. 0177);
 		@seq = &seqshort(@seq) if $unused =~ /^-U/;
 		foreach (@seq) {
 			$_ = &viewas(pack('c', $_)), next unless ref;
@@ -1433,6 +1468,15 @@ sub cmds {	# limited to 26 default keys (a-z), not guaranteed unique
 
 ###############################################################################
 ## Operation subroutines ######################################################
+
+sub setcomplete {
+	if (ref $_[0]) {
+		$rl->Attribs->{'completion_function'}	    = $_[0];
+	} else {
+		delete $rl->Attribs->{'completion_function'};
+		$rl->Attribs->{'completion_entry_function'} = undef;
+	}
+}
 
 sub rlhistget {
 	my $hist = shift;
@@ -1563,10 +1607,11 @@ sub diskdevs {
 }
 
 sub diskspace {
+	my @args = @_ ? @_ : (&pwd());	# &df trashes @_
 	return () unless &df();
-	my @r   = ();
-	my %mag = (1 => 'K', 2 => 'M', 3 => 'G', 4 => 'T');
-	foreach (@_ || &pwd()) {
+	my @r    = ();
+	my %mag  = (1 => 'K', 2 => 'M', 3 => 'G', 4 => 'T');
+	foreach (@args) {
 		my($u, $a)     = ($df->used($_), $df->avail($_));
 		my($t, $f, $s) = ($u + $a, 1, '');
 		foreach (reverse sort keys %mag) {
@@ -1574,13 +1619,22 @@ sub diskspace {
 				if $t > 1024 ** ($_ + 1);
 		}
 		push(@r, join(' ',
-			sprintf("%.0f$s",	     $u / $f),	   '/',
-			sprintf("%.0f$s",	     $t / $f),	   '=',
-			sprintf('%.1f%%', $t ? 100 * $u / $t : 0), 'used,',
-			sprintf("%.0f$s",	     $a / $f),	   'avail in',
-			$df->mount($_), 'on', $df->device($_)));
+			sprintf("%6.0f$s",	      $u / $f),	    '/'	    .
+			sprintf("%6.0f$s",	      $t / $f),	    '='	    .
+			sprintf('%5.1f%%', $t ? 100 * $u / $t : 0), 'used,' .
+			sprintf("%6.0f$s",	      $a / $f),	    'avail',
+			$df->device($_), $df->mount($_)));
 	}
 	$#r ? @r : shift @r;
+}
+
+sub colordiskspace {
+	local $_ = join('', @_);
+	s/\d+[MT]/&color($&, $co_size1)/ge;
+	s/\d+[KG]/&color($&, $co_size2)/ge;
+	s/([\d.]+)%/($1 >= $full) ? &color($&, $co_write) : $&/ge;
+	s/([\d.]+)%/($1 <  $full) ? &color($&, $co_ftype) : $&/ge;
+	$_;
 }
 
 ###############################################################################
@@ -1626,10 +1680,10 @@ sub bakescr {
 }
 
 sub winch {
-	my $path = $ENV{'PATH'}; $ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}";
+	&sttyfix(1);
 	$scr->resize();
 	eval { $rl->resize_terminal() };
-	$ENV{'PATH'} = $path;	# to get /usr/ucb/stty on Solaris
+	&sttyfix();
 	&cmdeval($onsub{'winch'}) if exists $onsub{'winch'};
 	&win(($_[0] == 1) ? () : ("\\$file0", "\\$file1", "\\$file1"));
 }
@@ -1684,9 +1738,9 @@ sub shell {
 	print "\n" unless $no;
 	&sigs_off();
 	$! = 0;
-	my @r = eval { system($shell || $ENV{'SHELL'} ||
-			      '/bin/sh', '-c', $cmd) };
-	&err("shell: $!") if $!;
+	my $s = $shell || $ENV{'SHELL'} || '/bin/sh';
+	my @r = eval { system($s, '-c', $cmd) };
+	&err("shell: $s: $!") if $!;
 	&sigs_on();
 	&bakescr($cooked = 0);
 	@r;
@@ -1742,6 +1796,26 @@ sub quit {
 	undef $scr;
 	undef $rl;
 	exit;
+}
+
+###############################################################################
+## System accomodation subroutines ############################################
+
+# With Term::Screen 1.03's attempted Solaris fixes, vshnu resizing broke
+# under Solaris.  So we temporarily pretend not to be solaris to avoid these
+# "fixes" and stick with the old solution of putting /usr/ucb at the head
+# of the PATH.
+
+sub sttyfix {
+	if ($_[0] =~ /./) {
+		$sttypath    = $ENV{'PATH'},
+		$ENV{'PATH'} = "/usr/ucb:$ENV{'PATH'}" if ! defined $sttypath;
+		$OSNAME	= 'not-solaris'	if $OSNAME eq 'solaris';
+	} else {
+		$OSNAME = 'solaris'	if $OSNAME eq 'not-solaris';
+		$ENV{'PATH'} = $sttypath,
+		undef $sttypath			       if   defined $sttypath;
+	}
 }
 
 ###############################################################################
@@ -1842,6 +1916,7 @@ sub expandtabs {
 
 sub view {
         local $_ = join('', @_);
+	s/\\/\\\\/g;
         s/\n/\\n/g;
         s/[\000-\007\013\016-\037\177-\237]/sprintf('\\%03o', ord($&))/eg;
         s/\010/\\b/g;	s/\f/\\f/g;

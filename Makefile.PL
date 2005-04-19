@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0128',	# package version; also ../*.html,
+	VERSION		=> '1.0136',	# package version; also ../*.html,
 					# mailing list?, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
@@ -48,6 +48,8 @@ WriteMakefile (
 # 1.0124  29 Jun 2004	Enhance RL M-v for configurable/selectable insertions
 # 1.0126  26 Nov 2004	Add Q cmd; Add X cut buffer integration
 # 1.0128  31 Jan 2005	Buildin Y/U commands; Improve default apps
+# 1.0129   1 Feb 2005	Workaround Term::Screen 1.03 "fixes"; Use English
+# 1.0136  18 Apr 2005	Add built-in df and altls coloring; Fix bugs, pagers
 
 sub MY::postamble { q~
 import:
