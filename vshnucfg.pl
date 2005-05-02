@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
-$default_vshnurc = '';
+$default_vshnucap = '';
+$default_vshnurc  = '';
 
 # .vshnucfg - required general vshnu configuration file
 # Steve Kinzler, kinzler@cs.indiana.edu, Aug 99/Mar 00/Sep 00
@@ -13,7 +14,7 @@ $default_vshnurc = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0140 1.0136);
+($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0200 1.0200);
 &addversions($cfg::vname, $cfg::version);
 
 die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
@@ -70,6 +71,11 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0138  15 Apr 2005	Add $full threshold for df coloring, skel &cfgcolorlong
 # 1.0139  17 Apr 2005	Add long coloring for md5sum and rpm
 # 1.0140  18 Apr 2005	Add text view and info action options for .pdf files
+# 1.0141  20 Apr 2005	Document file variables ($_, $_q, $_r, etc)
+# 1.0142  22 Apr 2005	Move 6 cmd to 8; Add 6 cmd for mimetype long listing
+# 1.0143  24 Apr 2005	Add V and v options for audio and visual beeps
+# 1.0144  26 Apr 2005	Add -safer option to ghostview
+# 1.0200  29 Apr 2005	Use &mailcap2typemap for vshnucap and $MAILCAPS, &xsh
 
 ###############################################################################
 ## External configuration #####################################################
@@ -160,6 +166,7 @@ $minfilelen  = 15;			# including any tag, recommend <=18
 $maxfilecols = 0;			# 0 => as many as possible
 $maxcdhist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
+$typemaptab  = 32;			# width of left column of typemap help
 
 # All mapped commands may be a command string, 'cmd', a command string
 # with text description, ['cmd', 'desc'], or a multiple-choice table
@@ -225,6 +232,18 @@ $insertcmd = [
 # include embedded perl code surrounded by double braces (eg "echo {{reverse
 # @ls}}"), the value of which is substituted into the shell command.
 
+# The following variables are available based on the file being acted upon:
+#	$_   = orig name, eg foo/bar.baz
+#	$_r  = root name, eg foo/bar
+#	$_e  = extension, eg baz
+#	$_h  = head name, eg foo
+#	$_t  = tail name, eg bar.baz
+#	$_f  = full name, eg /foo/bar.baz
+#	$_m  = MIME type, eg text/plain (requires `file -i` or MIME::Types)
+#	$_d  = description from `file -L` output
+#	$_*q = as above but quoted
+#	_    = preset file test argument
+
 # Typemaps are tested in sort order except for the default ('') being last.
 # &winch = a screen redraw (&win) after a check if the window changed size
 
@@ -263,6 +282,9 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		     . ' ifopt("L", "-l"), ifopt("T", "-F"),'
 		     . ' "$_q | $cfg::pagerr"; winch',
 		     'long tree list this directory',  'pPuUgG', 'tree -pug']],
+      &mailcap2typemap($ENV{VSHNUCAP} || $default_vshnucap ||
+	((-f "$ENV{HOME}/.vshnucap") ? "$ENV{HOME}/.vshnucap" : 'vshnucap'),
+'/ /; '),
 '/(^|\/|\.)mbox$/'
 		=> ['sh "mail", "-f", $_; winch',
 		    'run `mail` on this mailbox file'],
@@ -270,23 +292,23 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		=> ['sh "nroff -man < $_q | $cfg::pagerr"; winch',
 		    'view this man page formatted'],
 '/\.(aif[cf]?|au|snd)$/'
-		=> ['xshell "xplay -stay $_q"; win',
+		=> ['xsh "xplay -stay $_q"; win',
 		    'play this AU/AIFF audio file'],
 '/\.(avi|mo?v(ie)?|mpe?g|qt|wmv)$/i'
-		=> ['xshell "xterm -e gmplayer -- $_q"; win',
+		=> ['xsh "xterm -e gmplayer -- $_q"; win',
 		    'play this video file'],
 '/\.(bmp|gif|ico|jpe?g|p[bgp]m|pcx|png|tiff?|x[bp]m)$/i'
-		=> ['xshell "display $_q"; win', 'display this image file'],
+		=> ['xsh "display $_q"; win', 'display this image file'],
 '/\.(csv|doc|ppt|rtf|st[cdiw]|sx[cdgimw]|xls)$/i'
-		=> ['xshell "ooffice -- $_q"; win',
+		=> ['xsh "ooffice -- $_q"; win',
 		    'load this file into OpenOffice'],
 '/\.(dir|pag)$/'=> ['sh "makedbm -u $_rq' . $cfg::page,
 		    'view a dump of this dbm file'],
 '/\.(mp3|ogg|wav)$/'
-		=> ['xshell "xmms -p -e -- $_q"; win',
+		=> ['xsh "xmms -p -e -- $_q"; win',
 		    'play this MP3/Ogg/WAV audio file'],
 '/\.(wr|vrm)l(\.g?[Zz])?$/'
-		=> ['xshell "freewrl -- $_q"; win', 'display this VRML file'],
+		=> ['xsh "freewrl -- $_q"; win', 'display this VRML file'],
 '/\.a$/'	=> ['sh "ar tv $_q' . $cfg::page,
 		    'list the contents of this archive'],
 '/\.crl$/'	=> ['sh "openssl crl -noout -text -in $_q' . $cfg::page,
@@ -295,10 +317,10 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'view this SSL certificate'],
 '/\.csr$/'	=> ['sh "openssl req -noout -text -in $_q' . $cfg::page,
 		    'view this SSL certificate signing request'],
-'/\.dvi$/'	=> ['xshell "xdvi $_q"; win', 'display this DVI file'],
-'/\.e?ps$/i'	=> ['xshell "ghostview $_q"; win',
+'/\.dvi$/'	=> ['xsh "xdvi $_q"; win', 'display this DVI file'],
+'/\.e?ps$/i'	=> ['xsh "ghostview -safer $_q"; win',
 		    'display this PostScript file'],
-'/\.fig$/'	=> ['xshell "xfig $_q"; win',
+'/\.fig$/'	=> ['xsh "xfig $_q"; win',
 		    'load this figure file into `xfig`'],
 '/\.gpg$/'	=> ['sh "gpg -- $_q"; ret; winch', 'decrypt this GPG file'],
 '/\.iso$/i'	=> [['sh "isoinfo -d -i $_q' . $cfg::pagea,
@@ -312,10 +334,10 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    &cfg::zipbrowse('Java archive')],
 '/\.key$/'	=> ['sh "openssl rsa -noout -text -in $_q' . $cfg::page,
 		    'view this SSL private key'],
-'/\.lyx$/'	=> ['xshell "lyx $_q"; win', 'load this file into LyX'],
+'/\.lyx$/'	=> ['xsh "lyx $_q"; win', 'load this file into LyX'],
 '/\.o$/'	=> ['sh "nm -- $_q' . $cfg::page,
 		    'view the name list of this object file'],
-'/\.pdf$/i'	=> [['xshell "xpdf -q -- $_q"; win',
+'/\.pdf$/i'	=> [['xsh "xpdf -q -- $_q"; win',
 		     'display this PDF file',	     'dDrR', 'display'],
 		    ['shell "pdftotext -layout -nopgbrk -- $_q -' . $cfg::page,
 		     'view a text conversion of this PDF file',
@@ -325,7 +347,7 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 '/\.pgp$/'	=> ['sh "pgp -- $_q"; ret; winch', 'decrypt this PGP file'],
 '/\.prm$/'	=> ['sh "openssl dsaparam -noout -text -in $_q' . $cfg::page,
 		    'view this SSL parameter file'],
-'/\.r(am?|m)$/'	=> ['xshell "realplay $_q"; win', 'play this Real file'],
+'/\.r(am?|m)$/'	=> ['xsh "realplay $_q"; win', 'play this Real file'],
 '/\.rpm$/'	=> [['sh "rpm -qisp -- $_q' . $cfg::page,
 		     'view the info of this RPM package', 'qQ', 'query'],
 		    ['sh "rpm", "-ihv", "--", $_; ret; winch',
@@ -363,9 +385,8 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		     'extract this uuencoded file', 'xX',   'extract']],
 '/\.vshnu(cfg|rc)$/'
 		=> ['do $_q; err $@; win', 'load this vshnu config file'],
-'/\.xcf$/'	=> ['xshell "gimp $_q"; win',
-		    'load this image file into `gimp`'],
-'/\.xwd$/'	=> ['xshell "xwud -in $_q"; win', 'display this window dump'],
+'/\.xcf$/'	=> ['xsh "gimp $_q"; win', 'load this image file into `gimp`'],
+'/\.xwd$/'	=> ['xsh "xwud -in $_q"; win', 'display this window dump'],
 '/\.zip$/i'	=> [['sh "unzip -l -- $_q' . $cfg::pagea,
 		     'list the contents of this zip archive', 'tTlL', 'list'],
 		    &cfg::zipbrowse('zip archive')],
@@ -384,8 +405,12 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'view this file bunzipped'],
 '4; /\.g?z$/'	=> ['sh "gzip -d < $_q' . $cfg::pagea,
 		    'view this file gunzipped'],
-'9; ! -f _'	=> ['sh "stat", "--", $_; ret; winch',
+'7; ! -f _'	=> ['sh "stat", "--", $_; ret; winch',
 		    'run `stat` on this special file'],
+# insert all mailcaps in $MAILCAPS || std path here
+    &mailcap2typemap('',
+'8; ', ['take' => 'ALL'],
+       'text/plain', 'text/x-mail', 'message/rfc822', 'message/news'),
 '9; -s _ && -B _'
 		=> ['sh "strings < $_q' . $cfg::page,
 		    'view the strings in this binary file'],
@@ -482,7 +507,9 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'switch to/from the fourth file set display'],
 "5"	=> ['longls "-win", "md5sum -- \@_ 2>&1"',
 	    'long list files with their `md5sum` output'],
-"6"	=> ['@cfg::disks = disks, longls "-win", ";diskspace"'
+"6"	=> ['longls "-win", ";mimetype"',
+	    'long list files with their MIME type'],
+"8"	=> ['@cfg::disks = disks, longls "-win", ";diskspace"'
 	    . ' if altls \@cfg::disks, "Disks"; win',
 	    'switch to/from the disks file set df display'],
 "9"	=> ['helpmarks $cfg::pagerr; winch', 'list the defined marks'],
@@ -600,7 +627,7 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	    . ' remove the chosen files/directories (background)'],
 "E"	=> ['sh $cfg::editor, @choose' . $cfg::unchoose,
 	    'edit the chosen files'],
-"I"	=> ['xshell "display", quote(@choose)' . $cfg::unchoose,
+"I"	=> ['xsh "display", quote(@choose)' . $cfg::unchoose,
 	    'display the chosen image files'],
 "O"	=> ['keymap "opts"', 'push to option key mode'],
 "R"	=> ['ask "Remove?"; remove @choose' . $cfg::unchoose,
@@ -634,8 +661,8 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	"O"	=> ['keymap', 'pop from option key mode'],
 	""	=> ['beep; keymap; home', 'invalid option'],
 );
-$optkeys = '#/ABCDFILNSTXabcdfghilmnoprstu'; # enabled options
-$optons  = ($color) ? 'Cn' : '';	     # options with a toggled meaning
+$optkeys = '#/ABCDFILNSTVXabcdfghilmnoprstuv'; # enabled options
+$optons  = ($color) ? 'CVn' : '';	       # options with a toggled meaning
 %cfg::desc_opts = (
 	"#"	=> "list inode number instead of size in long listings",
 	"/"	=> "sort by increasing path depth",
@@ -649,6 +676,7 @@ $optons  = ($color) ? 'Cn' : '';	     # options with a toggled meaning
 	"N"	=> "show/sort owners and groups by ids not names",
 	"S"	=> "sort by decreasing size",
 	"T"	=> "tag files",
+	"V"	=> "use an audio beep",
 	"X"	=> "sort by file extension",
 	"a"	=> "don't list dot files",
 	"b"	=> "segregate dot files to the list bottom",
@@ -667,6 +695,7 @@ $optons  = ($color) ? 'Cn' : '';	     # options with a toggled meaning
 	"s"	=> "show Internet time in screen date",
 	"t"	=> "sort by modification time (newest first)",
 	"u"	=> "sort by access time (newest first)",
+	"v"	=> "use a visual beep",
 );
 foreach (split(//, $optons))  {
 	$cfg::desc_opts{$_} = "don't $cfg::desc_opts{$_}"
@@ -685,10 +714,17 @@ sub onquit { 1; }
 sub cfgcolorlong {
 	local $_ = join('', @_); my $s;
 	($s = &rccolorlong($_)) ne '' && ($_ = $s) if defined &rccolorlong;
-	$_ = &colorlongline($_, $co_error)
-		if $long =~ /^\s*md5sum\b/ && ! /^\\?[0-9a-f]*\\?$/i;
-	$_ = &colorlongline($_, $co_msg)
-		if $long =~ /^\s*rpm\b/    &&   /is ?n[o']t owned/i;
+	return &colorlongline($_, $co_error)
+		if $long =~ /^\s*md5sum\b/	&& ! /^\\?[0-9a-f]*\\?$/i;
+	return &colorlongline($_, $co_msg)
+		if $long =~ /^\s*rpm\b/		&&   /is ?n[o']t owned/i;
+	return &colorlongline($_, $co_error)
+		if $long =~ /^\s*;.*mimetype\b/ &&   /Can ?n?['o]t stat/i;
+	s/^([^\s,;]*)(\/)([^\s,;]*)(,\s*)?([^;]*)(;\s*)?(.*)/
+		&color($1, $co_ftype) . $2 .
+		&color($3, $co_myper) . $4 .
+		&color($5, $co_sbits) . $6 .
+		&color($7, $co_perms)/e if $long =~ /^\s*;.*mimetype/;
 	$_;
 }
 

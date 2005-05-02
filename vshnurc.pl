@@ -14,7 +14,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0129 1.0140);
+($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0200 1.0200);
 &addversions($rc::vname, $rc::version);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
@@ -62,6 +62,7 @@
 # 1.0127  11 Apr 2005	Make external reconfig dependent on tcsh/less presence
 # 1.0128  14 Apr 2005	Delete pager[ar] config; No color reconfig if ! kinzler
 # 1.0129  17 Apr 2005	Add &rccolorlong for getfacls and listacls
+# 1.0200  29 Apr 2005	Version normalization
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -99,7 +100,7 @@ $typemap_{'/\.xls$/i'} = ['shell "xls2tsv -- $_q' . $cfg::page,
 $rc::retrm = '; ret("Remove?") && remove $_; winch';
 ${$typemap_do{'-d _'}[0]}[0] =~ s/"--/ifopt("C", "--color"), "--/;
 $typemap_do{'/\.e?ps$/i'} =
-	[['xshell "ghostview $_q"; win',
+	[['xsh "ghostview -safer $_q"; win',
 	  'display this PostScript file',	   'vVgG',  'view'],
 	 ['sh "lpr", "-h", $_; ret; winch',
 	  'print this PostScript file',		   'pPlL',  'print'],

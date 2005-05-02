@@ -16,7 +16,7 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0136);
+($vname, $version) = qw(vshnu 1.0200);
 
 # 1.0000   7 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -60,6 +60,13 @@ $debug_ch = 0;
 # 1.0134  14 Apr 2005	Identify shell in &shell error messages
 # 1.0135  14 Apr 2005	Align &diskspace output; Strip up-mode keys from UNUSED
 # 1.0136  15 Apr 2005	Add &colorlong*, &cfgcolorlong, &colordiskspace, $full
+# 1.0137  20 Apr 2005	Fix some divide-by-zero errors in empty file sets
+# 1.0138  21 Apr 2005	Add $_d and $_dq dotype vars for `file -L` output
+# 1.0139  22 Apr 2005	Add &mimetype, $_m and $_mq dotype vars for MIME type
+# 1.0140  23 Apr 2005	Change &dotypepath to beep on file not found
+# 1.0141  24 Apr 2005	Use V and v options for audio and visual beeps
+# 1.0142  27 Apr 2005	Don't show \ as \\ in help keys; Add $typemaptab
+# 1.0200  29 Apr 2005	Add mailcap support with Mail::Cap; Add &xsh
 
 ###############################################################################
 ## Modules setup ##############################################################
@@ -79,6 +86,8 @@ use	English '-no_match_vars';
 use	Sys::Hostname;
 eval	'use Data::Dumper';
 eval	'use Filesys::DiskFree';
+eval	'use MIME::Types';
+eval	'use Mail::Cap';
 
 require Term::Screen;
 use	Term::ANSIColor;
@@ -91,6 +100,9 @@ die "usage: $0 [ -v | -V | [ -- ] dir ... ]\nVersion $version\n"
 			     if $ARGV[0] =~ /^-/ && $ARGV[0] ne '--';
 die "$0: stdin not a tty\n"  unless -t;
 shift @ARGV if $ARGV[0] eq '--';
+
+$file_i	   = `file -Lib /etc/passwd 2> /dev/null` =~ /^text/i;
+$mimetypes = (defined $MIME::Types::VERSION) ? new MIME::Types : undef;
 
 &winch_off();
 $rl = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
@@ -121,6 +133,10 @@ sub rl_bind_insert_vshnu {
 	'Data::Dumper'		=> $Data::Dumper::VERSION
 				|| 'NOT INSTALLED',
 	'Filesys::DiskFree'	=> $Filesys::DiskFree::VERSION
+				|| 'NOT INSTALLED',
+	'MIME::Types'		=> $MIME::Types::VERSION
+				|| 'NOT INSTALLED',
+	'Mail::Cap'		=> $Mail::Cap::VERSION
 				|| 'NOT INSTALLED',
 	'Term::Screen'		=> $Term::Screen::VERSION,
 	'Term::ANSIColor'	=> $Term::ANSIColor::VERSION,
@@ -168,6 +184,9 @@ $normal  = $scr->{TERM}->Tputs('me', 1) ||
 	   $scr->{TERM}->Tputs('se', 1);
 map($ansicolor{$Term::ANSIColor::attributes{$_} + 0} = $_,
     keys %Term::ANSIColor::attributes);
+
+$aubeep = $scr->{TERM}->Tputs('bl', 1) || "\a";
+$vibeep = $scr->{TERM}->Tputs('vb', 1);
 
 $user  = &uid2name($>);
 ($host = $ENV{'HOST'} || $ENV{'HOSTNAME'} ||
@@ -525,9 +544,9 @@ sub page {
 	    (/^$/)     ? $filecol					 :
 	    (s/^\+//)  ? $filecol  + $_					 :
 	    (s/^\-//)  ? $filecol  - $_					 :
-	    (s/^>//)   ? ($filecol + $_) % $pages			 :
+	    (s/^>//)   ? ($filecol + $_) % ($pages || 1)		 :
 	    (s/^]//)   ? (($filecol + $_ >= $pages) ? 0 : $filecol + $_) :
-	    (s/^<//)   ? ($filecol - $_) % $pages			 :
+	    (s/^<//)   ? ($filecol - $_) % ($pages || 1)		 :
 	    (s/^\[//)  ? (($filecol == 0) ? $pages - ($pages % $_ || $_) :
 			  ($filecol - $_ < 0) ? 0 : $filecol - $_)	 :
 	    (/^\d/)    ? $_ - 1						 :
@@ -540,16 +559,16 @@ sub page {
 	s/^([-+<>]?)#/$1$filecols/;
 	s/^([-+<>]?)\$/$1$pages/;
 	$bagcol  =
-	    (/^$/)     ? $bagcol				       :
-	    (s/^\+//)  ? $bagcol  + $_				       :
-	    (s/^\-//)  ? $bagcol  - $_				       :
+	    (/^$/)     ? $bagcol					      :
+	    (s/^\+//)  ? $bagcol  + $_					      :
+	    (s/^\-//)  ? $bagcol  - $_					      :
 	    (s/^>//)   ? ($bagcol + $_ - $filecol) %
-			 &min($filecols, $pages - $filecol) + $filecol :
+			 (&min($filecols, $pages - $filecol) + $filecol || 1) :
 	    (s/^<//)   ? ($bagcol - $_ - $filecol) %
-			 &min($filecols, $pages - $filecol) + $filecol :
-	    (/^\d/)    ? $filecol + $_ - 1			       :
+			 (&min($filecols, $pages - $filecol) + $filecol || 1) :
+	    (/^\d/)    ? $filecol + $_ - 1				      :
 	    (s/^\\?//) ? ((exists $col{$_}) ? $col{$_} :
-			  (($col{$_}, $row{$_}) = &pageto($_))[0])     : 0;
+			  (($col{$_}, $row{$_}) = &pageto($_))[0])	   : 0;
 	$bagcol  = &max($filecol, &min($bagcol,
 			&min($filecol + $filecols - 1, $pages - 1)));
 
@@ -562,9 +581,9 @@ sub page {
 	    (/^$/)     ? $bagrow				  :
 	    (s/^\+//)  ? $bagrow  + $_				  :
 	    (s/^\-//)  ? $bagrow  - $_				  :
-	    (s/^>//)   ? ($bagrow + $_) % $bagrows		  :
-	    (s/^<//)   ? ($bagrow - $_) % $bagrows		  :
-	    (s/^]//)   ? return &page('',
+	    (s/^>//)   ? ($bagrow + $_) % ($bagrows || 1)	  :
+	    (s/^<//)   ? ($bagrow - $_) % ($bagrows || 1)	  :
+	    (s/^]//)   ? return ! $bagrows ? 0 : &page('',
 			     '>' . int(($bagrow + 1) / $bagrows),
 			     ($bagrow + 1) % $bagrows + 1)	  :
 	    (s/^\[//)  ? return &page('',
@@ -594,8 +613,8 @@ sub filecols {
 	    (s/^\+//) ? (($maxfilecols > 0) ? $maxfilecols + $_ : 0)	   :
 	    (s/^\-//) ? &max(1, (($maxfilecols > 0) ? $maxfilecols
 						    : $havefilecols) - $_) :
-	    (s/^>//)  ? ($maxfilecols + $_) % $havefilecols		   :
-	    (s/^<//)  ? ($maxfilecols - $_) % $havefilecols		   :
+	    (s/^>//)  ? ($maxfilecols + $_) % ($havefilecols || 1)	   :
+	    (s/^<//)  ? ($maxfilecols - $_) % ($havefilecols || 1)	   :
 	    (/^\d/)   ? $_						   : 0;
 	$maxfilecols = &max(0, &min($maxfilecols, $havefilecols));
 }
@@ -607,10 +626,10 @@ sub fileptr {
 	my $n = &aindex($fileptr, @bagkeys);
 	$n = 0 if $n < 0;
 	$fileptr =
-	    (s/^\+//)  ? $usedbagkeys[&min($n + $_, $#usedbagkeys)]	:
-	    (s/^\-//)  ? $usedbagkeys[&max(0, $n - $_)]			:
-	    (s/^>//)   ? $usedbagkeys[($n + $_) % ($#usedbagkeys + 1)]	:
-	    (s/^<//)   ? $usedbagkeys[($n - $_) % ($#usedbagkeys + 1)]	:
+	    (s/^\+//)  ? $usedbagkeys[&min($n + $_, $#usedbagkeys)]	    :
+	    (s/^\-//)  ? $usedbagkeys[&max(0, $n - $_)]			    :
+	    (s/^>//)   ? $usedbagkeys[($n + $_) % ($#usedbagkeys + 1 || 1)] :
+	    (s/^<//)   ? $usedbagkeys[($n - $_) % ($#usedbagkeys + 1 || 1)] :
 	    (s/^\\?//) ? $_						: $_;
 	$fileptr = $usedbagkeys[$#usedbagkeys]
 		if &aindex($fileptr, @usedbagkeys) < 0;
@@ -797,7 +816,8 @@ sub dotypepath {
 		my $file = ((/./) ? &untilde($_) . '/' : '') . $todo;
 		return &dotype($file) if -e $file;
 	}
-	&dotype($todo);
+#	&dotype($todo);	# old behavior if file not found
+	&beep(); &win();
 }
 
 sub dotype {
@@ -807,8 +827,10 @@ sub dotype {
 	(/\//) ? (($_h = $_) =~ s/\/([^\/]*)$//, $_t = $1) :
 		 ( $_h = '',			 $_t = $_);
 	local $_f  = &absfile($_);
-	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq) =
-		map { &quote($_) } ($_, $_r, $_e, $_h, $_t, $_f);
+	local $_m  = &mimetype($_);
+	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq, $_mq) =
+		map { &quote($_) } ($_, $_r, $_e, $_h, $_t, $_f, $_m);
+	local $_d  = `file -L $_q`; chomp $_d; local $_dq = &quote($_d);
 
 	@dohist = ($_f, grep($_ ne $_f, @dohist)) unless -d;
 	my $max = eval $maxdohist;
@@ -1379,8 +1401,9 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 	push(@_, @kmap) unless @_;
 	while (@_) {
 		$key = shift;
-		unshift(@_, @kmap),	       next if $key eq '%keymap';
-		unshift(@_, @tmap), $tab = 24, next if $key eq '%typemap';
+		unshift(@_, @kmap), next if $key eq '%keymap';
+		unshift(@_, @tmap), $tab = $typemaptab, next
+					 if $key eq '%typemap';
 		$val = shift;
 		$list{$key} = $val unless exists $list{$key};
 
@@ -1423,7 +1446,8 @@ sub helpstr {
 			    &cmds($cmd));
 
 	$key = (length($key) == 1) ? &colorkey($v1 = &viewas($key)) :
-			&color($v1 = &view($key), $co_code);
+			&color($v1 = &view('no-double-backslash', $key),
+			       $co_code);
 	$prk = (length($prk) == 0) ? ''				    :
 	       (length($prk) == 1) ? &colorkey($v2 = &viewas($prk)) :
 			&color($v2 = &view($prk), $co_code);
@@ -1567,7 +1591,8 @@ sub err {
 }
 
 sub beep {
-	print "\a";
+	print $aubeep if &opt('V');
+	print $vibeep if &opt('v');
 }
 
 ###############################################################################
@@ -1584,6 +1609,86 @@ sub vardump {
 				  ->Purity(1)->Terse(1)->Deepcopy(1)->Dump;
 	}
 	$r;
+}
+
+###############################################################################
+## MIME-related subroutines ###################################################
+
+# We circumvent the Mail::Cap methods a bit here (see comments), so this
+# may break.  Also, we may miss some valid mailcap entries because their
+# 'test' clauses fail with our fake file '%s'.
+
+sub mailcap2typemap {
+	my($file, $pfx, $args, @except) = @_;
+	return () if ! defined $Mail::Cap::VERSION || $file && ! -e $file;
+	my $cap = ($file) ? new Mail::Cap $file
+			  : new Mail::Cap @$args;
+	my @r   = (); my $cmd;
+	foreach my $type (keys %$cap) {		# Mail::Cap circumvention
+		next if $type =~ /^_|'/;	# Mail::Cap circumvention
+		next if grep(&mimetypeeq($type, $_), @except);
+		$cmd = [&capcmd2cmd($cap, $type, 'view'),
+			&capcmd2cmd($cap, $type, 'edit'),
+			&capcmd2cmd($cap, $type, 'print')];
+		push(@r, $pfx . "mimetypeeq \$_m, '$type'" => $cmd) if @$cmd;
+	}
+	@r;
+}
+
+# Non-standard field extensions to mailcap entries are:
+#   dontneedterminal = an X11 command not needing a terminal
+#	(note that the standard needsterminal is otherwise assumed true)
+#   shortview, shortedit, shortprint = shorter command versions for description
+
+sub capcmd2cmd {
+	my($cap, $type, $verb) = @_; my $key = substr($verb, 0, 1);
+	my $cmd  = ($key eq 'e') ? $cap->editCmd( $type, '%s') :
+		   ($key eq 'p') ? $cap->printCmd($type, '%s') :
+				   $cap->viewCmd( $type, '%s');
+	return () if $cmd =~ /^\s*$|\%[Fnu]/;	# unsupported macros
+	my $scmd = ($key eq 'e') ? $cap->field($type, 'shortedit')  :
+		   ($key eq 'p') ? $cap->field($type, 'shortprint') :
+				   $cap->field($type, 'shortview');
+	$scmd = $cmd unless $scmd;
+	local $_ = &evalquote($cmd);
+	$_ .= ' . " < $_q"'	     unless /\%s/; 
+	$_ .= ' . " | $cfg::pagera"' if $cap->field($type, 'copiousoutput')
+				     && $key ne 'e' && $key ne 'p';
+	s/\%s'$/' . \$_q/s;
+	s/\%s/' . \$_q . '/gs;
+	return ["xsh $_; win",
+		"$verb this file", $key . uc $key,
+		"$verb with `$scmd`"]
+			if $cap->field($type, 'dontneedterminal')
+			&& $key ne 'e' && $key ne 'p';
+	(["sh $_; winch",
+	  "$verb this file from this terminal",     $key,
+	  "$verb from this term with `$scmd`"],
+	 ["xsh \"xterm -e '\" . " . do { s/\\'/\\'"\\'"\\'/gs; $_ }
+				  . " . \"'\"; win",
+	  "$verb this file from a new terminal", uc $key,
+	  "$verb from new term with `$scmd`"]);
+}
+
+sub mimetype {
+	my $type;
+	my @r = map { ($file_i && do { $type = &quote($_);
+				       $type = "''" if $type eq '';
+				       $type = `file -Lib $type 2> /dev/null`;
+				       chomp $type; $type })
+				? $type	      :
+		      ($mimetypes && do { $type = $mimetypes->mimeTypeOf($_) })
+				? $type->type : '' } @_;
+	$#r ? @r : shift @r;
+}
+
+sub mimetypeeq {
+	my($a, $b) = @_;
+	$a =~ s/\s*[,;\s].*//;
+	$b =~ s/\s*[,;\s].*//;
+	return 2 if $a =~ /\*$/ && $b =~ /^\Q$`\E/;
+	return 3 if $b =~ /\*$/ && $a =~ /^\Q$`\E/;
+	$a eq $b;
 }
 
 ###############################################################################
@@ -1853,6 +1958,11 @@ sub myctime {		# Internet (Swatch) Time
 	. localtime($_[0]);
 }
 
+sub xsh {
+	&err('DISPLAY not defined'), return unless $ENV{'DISPLAY'};
+	&sh(join(' ', @_, '&'));
+}
+
 sub xshell {
 	&err('DISPLAY not defined'), return unless $ENV{'DISPLAY'};
 	&shell(@_, '&');
@@ -1915,8 +2025,9 @@ sub expandtabs {
 }
 
 sub view {
+	my $ndbs = shift if $_[0] eq 'no-double-backslash' && $#_;
         local $_ = join('', @_);
-	s/\\/\\\\/g;
+	s/\\/\\\\/g unless $ndbs;
         s/\n/\\n/g;
         s/[\000-\007\013\016-\037\177-\237]/sprintf('\\%03o', ord($&))/eg;
         s/\010/\\b/g;	s/\f/\\f/g;

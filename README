@@ -65,12 +65,12 @@ whatever more you put into using it.
 * Extensive options for sorting and listing a directory's files
 * Multiple methods for navigating directories and selecting files
 * Directory locations may be marked for quick returns
-* Lists command outputs alongside files, including a builtin `ls -l`
+* Lists colored command outputs alongside files, including a builtin `ls -l`
+  and `df`
 * Directory and file histories
 * In color terminals, uses color for more informative displays, including
   file coloring by type via the standard LS_COLORS environment variable
 * Expands and collapses chosen subdirectories
-* Option to display Internet (Swatch) time
 
 o Multiple methods for choosing and operating on individual or arbitrary
   sets of files
@@ -91,11 +91,12 @@ o Separate per-site and per-user configurability
 * Perl statements may be {{embedded}} within shell commands
 * A Perl "where" clause to subset the displayed files
 
+o Can use mailcap files for specifying file actions by MIME type
 o Can use the CD_PATH environment variable as a search path for files
   and directories
-o Recognizes the following standard environment variables: DISPLAY,
-  EDITOR, HOME, HOST, LS_COLORS, MAIL, PAGER, PATH, PERL_RL, SHELL
-  and VISUAL
+o Recognizes the following standard environment variables:
+  ANSI_COLORS_DISABLED, DISPLAY, EDITOR, HOME, HOST, LS_COLORS, MAIL,
+  MAILCAPS, PAGER, PATH, PERL_RL, SHELL and VISUAL
 
 ------------------------------  HISTORY  -------------------------------
 
@@ -139,7 +140,9 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
 
     The Term::ReadLine::Gnu, or at least the Term::ReadLine::Perl, module
     is recommended to provide line editing, history, filename completion,
-    and insertions (with M-v) within vshnu <http://www.cpan.org>.
+    and insertions (with M-v) within vshnu <http://www.cpan.org>.  Other
+    modules that Perl can use, if installed, for particular features are
+    Data::Dumper, Filesys::DiskFree, MIME::Types and Mail::Cap.
 
     If available, vshnu can make good use of color in a terminal or
     console with ANSI color support, and this is highly recommended.  For
@@ -202,7 +205,8 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     "engine" script and the supplied required configuration file.
     An entirely new configuration file could be written and substituted
     for the supplied one for a vshnu with a very different key command
-    structure and operation (modeless perhaps).
+    structure and operation (modeless perhaps).  Contributions of
+    additions or improvements to the vshnucfg file are welcome.
 
     Usually, though, you'll just want to add on some personal extras or
     tweak a few things in the supplied configuration.  This can be done
@@ -216,8 +220,20 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     variable is set in the vshnucfg file).  My personal vshnurc file
     is included here as "vshnurc.pl" as an example to start your own.
     Some familiarity with Perl will probably be required to do any
-    significant work within these files.  Contributions of additions
-    or improvements to the vshnucfg file are welcome.
+    significant work within these files.
+
+    If the Mail::Cap, and perhaps MIME::Types, modules are available,
+    vshnu's supplied configuration will use any mailcap files it finds
+    (in $MAILCAPS or $HOME/.mailcap, /etc/mailcap, /usr/etc/mailcap and
+    /usr/local/etc/mailcap) for offered file actions for any file types
+    it doesn't otherwise cover.  Also, it will recognize a vshnu-specific
+    mailcap file (in $VSHNUCAP or $HOME/.vshnucap or the $default_vshnucap
+    variable set in the vshnucfg file) for file actions to supersede
+    its usual configuration.  For example, if you prefer xv(1) over
+    display(1) for viewing image files, you may find adding this line
+    to your vshnucap file simpler than changing your vshnurc file:
+
+	image/*; xv %s; dontneedterminal
 
 -------------------------------  USAGE  --------------------------------
 
@@ -225,10 +241,11 @@ This is the minimum you'll want to know to make some good use of vshunu
 with the supplied configuration:
 
     Upon starting vshnu, you should see a listing of the files in your
-    current directory.  You can enter a subdirectory by typing the letter
-    that labels it.  Typing the label letter of a file will load that file
-    into your editor.  You can go up to the parent directory with <Return>
-    or back to the previous directory with '\'.  <Tab> and <Backspace>
+    current directory.  You can enter a subdirectory by typing the
+    letter that labels it.  Typing the label letter of a file will load
+    that file into your editor.  You can go up to the parent directory
+    with <Return> or back to the previous directory with '\'.  With '.'
+    you can enter a file or directory to go to.  <Tab> and <Backspace>
     (or <Delete>) will slide the labels (aka the "bag") around to the
     other files on the screen.  <Space> will page to the next screenful of
     files in the current directory.  Typing 'L' repeatedly will display
@@ -283,7 +300,7 @@ pages 124-125.
 ---------------------------  GPL COPYRIGHT  ----------------------------
 
 vshnu: the New Visual Shell
-Copyright (C) 1999-2004 Stephen B Kinzler
+Copyright (C) 1999 Stephen B Kinzler
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -318,6 +335,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler		   revised November 2004
+http://www.cs.indiana.edu/~kinzler		   revised May	    2005
 
 Your feedback is welcome!
