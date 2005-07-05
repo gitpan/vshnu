@@ -8,17 +8,17 @@ $default_vshnurc  = '';
 # see website http://www.cs.indiana.edu/~kinzler/vshnu/
 # http://www.cs.indiana.edu/~kinzler/home.html#unixcfg
 
-# Names used only within and below this .vshnucfg are placed in the cfg::
+# Names used only within and below this vshnucfg are placed in the cfg::
 # package.  This file should be reloadable.
 
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(.vshnucfg 1.0200 1.0200);
+($cfg::vname, $cfg::version, $cfg::require) = qw(vshnucfg 1.0211 1.0208);
 &addversions($cfg::vname, $cfg::version);
 
-die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
-    "($version)\r\n" if $cfg::require > $version;
+&quit("$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
+      "($version)\n") if $cfg::require > $version;
 
 # 1.0000   7 Nov 2000	Initial public release
 # 1.0001  15 Nov 2000	$cfg::pagerr defaults to `less -r` if PAGER=less
@@ -76,6 +76,17 @@ die "$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
 # 1.0143  24 Apr 2005	Add V and v options for audio and visual beeps
 # 1.0144  26 Apr 2005	Add -safer option to ghostview
 # 1.0200  29 Apr 2005	Use &mailcap2typemap for vshnucap and $MAILCAPS, &xsh
+# 1.0201   3 May 2005	Add ^\ command, $initmouse, $forcemouse and &onrestart
+# 1.0202   4 May 2005	Add mous command to call &domouse; Set $initmouse on
+# 1.0203   6 May 2005	Use $hostr vs $host in X command
+# 1.0204   9 May 2005	Add P option to sort by file basename
+# 1.0205   9 May 2005	Update . command description; Fix bug in $onsub{cd}
+# 1.0206  10 May 2005	Add username and groupname rl completion to chown/chgrp
+# 1.0207  11 May 2005	Use &completetypepath for . command completions
+# 1.0208  11 May 2005	Add /`P for choosing all CD_PATH elements
+# 1.0209  18 May 2005	Add ordering arrays of typemap and keymap keys
+# 1.0210   1 Jul 2005	Fix redundant &win in 8 command
+# 1.0211   5 Jul 2005	Use &quit vs die
 
 ###############################################################################
 ## External configuration #####################################################
@@ -167,6 +178,8 @@ $maxfilecols = 0;			# 0 => as many as possible
 $maxcdhist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 $maxdohist   = '$scr->{ROWS} - 4';	# eval'ed, <0 => no limit
 $typemaptab  = 32;			# width of left column of typemap help
+$initmouse   = 'off';			# initial xterm mouse mode
+$forcemouse  = 0;			# allow mouse mode even if no Km||xterm
 
 # All mapped commands may be a command string, 'cmd', a command string
 # with text description, ['cmd', 'desc'], or a multiple-choice table
@@ -177,7 +190,7 @@ $typemaptab  = 32;			# width of left column of typemap help
 # to be eval()ed as double-quoted.
 
 %onsub = (
-	'cd'		=> 'altls; cfg::abssets $cdhist[1]{ls}',
+	'cd'		=> 'altls; $#cdhist && cfg::abssets $cdhist[1]{ls}',
 	'altls'		=> 'longls',
 	'winch'		=> 'longls',
 );
@@ -247,19 +260,21 @@ $insertcmd = [
 # Typemaps are tested in sort order except for the default ('') being last.
 # &winch = a screen redraw (&win) after a check if the window changed size
 
-%typemap_ = (
+%typemap_ = @typemap_ = (
 	' /^$/'		=> 'win',
 	'-e _ && -d _'	=> ['cd $_; win', 'enter this directory'],
 	''		=> ['sh $cfg::editor, $_; winch', 'edit this file'],
 );
+@typemap_ = &akeys(@typemap_);
 
-%typemap_expand = (	## " ##
+%typemap_expand = @typemap_expand = (	## " ##
 	' /^$/'		=> 'win',
 	'! -e _'	=> 'beep; win',
 	'-d _'		=> ['expandtoggle $_; win',
 			    'expand or collapse this directory'],
 	''		=> 'beep',
 );
+@typemap_expand = &akeys(@typemap_expand);
 
 sub cfg::zarbrowse {
 	['xshell "konqueror -- ' . $_[0] . ':$_fq"; win',
@@ -268,7 +283,7 @@ sub cfg::tarbrowse { &cfg::zarbrowse('tar', @_) }
 sub cfg::zipbrowse { &cfg::zarbrowse('zip', @_) }
 $cfg::page  = ' | $cfg::pager"; winch';
 $cfg::pagea = ' | $cfg::pagera"; winch';
-%typemap_do = (		## ? ##
+%typemap_do = @typemap_do = (		## ? ##
 ' /^$/'		=> 'win',
 '! -e _'	=> 'beep; win',
 '-d _'		=> [['shell "ls -lR", unlessopt("a"), ifopt("L"),'
@@ -416,13 +431,14 @@ $cfg::pagea = ' | $cfg::pagera"; winch';
 		    'view the strings in this binary file'],
 ''		=> ['sh $cfg::pager, $_; winch', 'view this file'],
 );
+@typemap_do = &akeys(@typemap_do);
 
 ###############################################################################
 ## Main keymap configuration ##################################################
 
 $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 
-%keymap_ = (
+%keymap_ = @keymap_ = (
 "\cA"	=> ['cd pwd; win', "cd to the current directory's hard path"],
 "\cB"	=> ['@bagkeys ? rebag : rebag(@cfg::savebagkeys)',
 	    "toggle the bag's presence"],
@@ -443,7 +459,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'cd to the previous directory in the history'],
 "\cQ"	=> [['do $vshnucfg; err $@; win', 'reload the config file ($vshnucfg)',
 				       "cC\cClL\cL",	  'load $vshnucfg'],
-	    ['exec $0', 'restart and reinitialize $vname ($0)',
+	    ['restart', 'restart and reinitialize $vname ($0)',
 				       "sS\cS",		  'restart'],
 	    ['stop; winch', 'suspend to the master shell',
 				       "zZ\cZvV\cVyY\cY", 'suspend'],
@@ -458,6 +474,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'rewind and cd to the start of the directory history'],
 "\cY"	=> ['msg filecount', 'report the numbers of directories and files'],
 "\c["	=> ['win "<1"', 'shift the file display left one column'],
+"\034"	=> ['mousemode("toggle") || beep; win', 'toggle the mouse mode'], # ^\
 "\c]"	=> ['win ">1"', 'shift the file display right one column'],
 "\c_"	=> ['pipeto $cfg::pager, "#!/bin/perl\n", vardump get "Refs (all):";'
 	    . ' winch', 'list the given perl variables with their values'],
@@ -493,8 +510,10 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'truncate the long listing area on the left/right'],
 "-"	=> ['point "<1"; point',
 	    'act on the file above the point by its type'],
-"."	=> ['dotypepath getfile "File:"',
-	    'act on the given file by its type, searching in \$CD_PATH'],
+"."	=> ['setcomplete \&completetypepath, "Gnu";'
+	    . ' dotypepath getfile "File:"; setcomplete',
+	    'act on the given file by its type,' .
+	    ' searching in \$CD_PATH and histories'],
 "/"	=> ['keymap "choose"', 'enter/exit choose key mode'],
 "0"	=> ['point "-\$"; win 1, 1, 1', 'page to the top of the directory'],
 "1"	=> ['altls \@cfg::set1, "File Set 1"; win',
@@ -509,7 +528,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'long list files with their `md5sum` output'],
 "6"	=> ['longls "-win", ";mimetype"',
 	    'long list files with their MIME type'],
-"8"	=> ['@cfg::disks = disks, longls "-win", ";diskspace"'
+"8"	=> ['(@cfg::disks = disks) && longls ";diskspace"'
 	    . ' if altls \@cfg::disks, "Disks"; win',
 	    'switch to/from the disks file set df display'],
 "9"	=> ['helpmarks $cfg::pagerr; winch', 'list the defined marks'],
@@ -541,13 +560,13 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 "X"	=> [['pipeto "xcb -s 0", $cwd',
 	     'copy the current directory to X cut buffer 0',
 	     '.',   'current directory'],
-	    ['pipeto "xcb -s 0", "$user\@$host:$cwd"',
+	    ['pipeto "xcb -s 0", "$user\@$hostr:$cwd"',
 	     'copy user\@host:dir to X cut buffer 0',
 	     'dD',  'user\@host:dir'],
 	    ['pipeto "xcb -s 0", absfile $point',
 	     'copy the point file to X cut buffer 0',
 	     '>pP', 'point file'],
-	    ['pipeto "xcb -s 0", "$user\@$host:" . absfile $point',
+	    ['pipeto "xcb -s 0", "$user\@$hostr:" . absfile $point',
 	     'copy the point file to X cut buffer 0',
 	     'fF',  'user\@host:file'],
 	    ['pipeto "xcb -s 0", join(" ", map { absfile $_ } @choose)',
@@ -567,20 +586,23 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 			    . ' wrapping around to the maximum'],
 "}"	=> ['point ">1"', 'slide the point down one file, wrapping around'],
 "~"	=> ['cd "~"; win', "cd to the user's home directory"],
-"pgup"	=> ['point "-1"', 'slide the point up one file'],
-"pgdn"	=> ['point "+1"', 'slide the point down one file'],
+"kd"	=> ['bag "", "+1"', 'slide the bag down on the screen'],
 "kl"	=> ['bag "-1"',	    'slide the bag left on the screen'],
 "kr"	=> ['bag "+1"',	    'slide the bag right on the screen'],
 "ku"	=> ['bag "", "-1"', 'slide the bag up on the screen'],
-"kd"	=> ['bag "", "+1"', 'slide the bag down on the screen'],
+"mous"	=> ['domouse', 'handle a mouse event'],
+"pgdn"	=> ['point "+1"', 'slide the point down one file'],
+"pgup"	=> ['point "-1"', 'slide the point up one file'],
 ""	=> ['beep; home', 'invalid command key'],
 );
+@keymap_ = &akeys(@keymap_);
 
-$keymap_{"\cZ"}	 = $keymap_{"\cQ"};	# screen(1) special char
-$keymap_{"ins"}	 = $keymap_{"\cI"};
-$keymap_{"del"}	 = $keymap_{"\177"} = $keymap_{"\cH"};
-$keymap_{"home"} = $keymap_{"~"};	# potential protocol escape char
-$keymap_{"end"}	 = $keymap_{"\c["};	# potential protocol escape char
+&mapadd('keymap_', "\cZ",  $keymap_{"\cQ"}, "\c[");	# screen(1) special
+&mapadd('keymap_', "\177", $keymap_{"\cH"}, "kd");
+&mapadd('keymap_', "del",  $keymap_{"\cH"}, "kd");
+&mapadd('keymap_', "end",  $keymap_{"\c["}, "kd");	# protocol esc char?
+&mapadd('keymap_', "home", $keymap_{"~"},   "kd");	# protocol esc char?
+&mapadd('keymap_', "ins",  $keymap_{"\cI"}, "kd");
 # numbered function keys might be usable as "k1"-"k12" or "k0"-"k9"
 
 ###############################################################################
@@ -591,7 +613,7 @@ $keymap_{"end"}	 = $keymap_{"\c["};	# potential protocol escape char
 
 $cfg::unchoose = '; unchoose @choose; keymap; winch';
 $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
-%keymap_choose = (	## / ##
+%keymap_choose = @keymap_choose = (	## / ##
 "\cB"	=> ['choose @bagfiles', 'choose all the bag files'],
 "\cE"	=> ['map { dotype $_ } @choose',
 	    'act on each chosen file in turn by its type'],
@@ -604,7 +626,7 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 "%"	=> ['help "-unused", $cfg::pagerr; winch',
 	    'list the commands for the choose key mode'],
 "'"	=> ['point', 'choose the point file'],
-"."	=> ['choose grepls "/" . gets("Regexp:") . "/"; winch',
+"."	=> ['choose matchfiles gets "Regexp:"; winch',
 	    'choose the display files that match the given pattern'],
 ":"	=> ['shell gets("(Shell:"), quote(@choose), get("Shell):"); ret'
 	    . $cfg::unchoose, 'run a shell (or ;perl) command'
@@ -615,12 +637,14 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 "@"	=> ['choose lsall', 'choose all the display files'],
 "A"	=> ['shell "stat", ifopt("L"), "--", quote(@choose), "| $cfg::pager"'
 	    . $cfg::unchoose, 'run `stat` on the chosen files'],
-"C"	=> [['sh "chmod", gets("Mode:"), @choose; ret' . $cfg::unchoose,
+"C"	=> [['setcomplete sub {}; sh "chmod", gets("Mode:"), @choose;'
+	     . ' setcomplete; ret' . $cfg::unchoose,
 	     'run `chmod` on the chosen files', 'mM', 'chmod'],
-	    ['sh "chown", gets("Owner:"), @choose; ret' . $cfg::unchoose,
+	    ['setcomplete \&users; sh "chown", gets("Owner:"), @choose;'
+	     . ' setcomplete; ret' . $cfg::unchoose,
 	     'run `chown` on the chosen files', 'oO', 'chown'],
-	    ['sh "chgrp", ifopt("h"), gets("Group:"), @choose; ret'
-	     . $cfg::unchoose,
+	    ['setcomplete \&groups; sh "chgrp", ifopt("h"), gets("Group:"),'
+	     . ' @choose; setcomplete; ret' . $cfg::unchoose,
 	     'run `chgrp` on the chosen files', 'gG', 'chgrp']],
 "D"	=> ['ask "Remove recursively?"; shell "rm -r --", quote(@choose), "; '
 	    . $cfg::shbeep . ' &"; sleep 1' . $cfg::unchoose, 'recursively'
@@ -641,7 +665,10 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	     'cCsS`;:$', 'command'],
 	    ['choose split /:/, $ENV{PATH}; win', 
 	     'choose the elements of the PATH environment variable',
-	     'pP',	 'PATH'],
+	     'p',	 'PATH'],
+	    ['choose split /:/, $ENV{CD_PATH}; win', 
+	     'choose the elements of the CD_PATH environment variable',
+	     'P',	 'CD_PATH'],
 	    ['choose sort &disks; win',	   'choose all system disks',
 	     'dDmM',	 'disks'],
 	    ['choose sort &diskdevs; win', 'choose all system disk devices',
@@ -649,11 +676,12 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 ""	=> ['cmdeval keymapcmd ""',
 	    'execute the main mode command for this key'],
 );
+@keymap_choose = &akeys(@keymap_choose);
 
 ###############################################################################
 ## "Options" keymap configuration #############################################
 
-%keymap_opts = (	## O ##
+%keymap_opts = @keymap_opts = (		## O ##
 	"\cN"	=> $keymap_{"\cN"},
 	"%"	=> ['help "-unused", $cfg::pagerr, %keymap_opts; winch',
 		    'list the commands for the option key mode'],
@@ -661,8 +689,9 @@ $cfg::shbeep   = "echo \a\a | tr -d '\\\\012'";
 	"O"	=> ['keymap', 'pop from option key mode'],
 	""	=> ['beep; keymap; home', 'invalid option'],
 );
-$optkeys = '#/ABCDFILNSTVXabcdfghilmnoprstuv'; # enabled options
-$optons  = ($color) ? 'CVn' : '';	       # options with a toggled meaning
+@keymap_opts = &akeys(@keymap_opts);
+$optkeys = '#/ABCDFILNPSTVXabcdfghilmnoprstuv';	# enabled options
+$optons  = ($color) ? 'CVn' : '';		# options with toggled meaning
 %cfg::desc_opts = (
 	"#"	=> "list inode number instead of size in long listings",
 	"/"	=> "sort by increasing path depth",
@@ -674,6 +703,7 @@ $optons  = ($color) ? 'CVn' : '';	       # options with a toggled meaning
 	"I"	=> "sort by increasing inode",
 	"L"	=> "follow symlinks for long listings, stat sorting, etc",
 	"N"	=> "show/sort owners and groups by ids not names",
+	"P"	=> "sort by file basename",
 	"S"	=> "sort by decreasing size",
 	"T"	=> "tag files",
 	"V"	=> "use an audio beep",
@@ -702,14 +732,16 @@ foreach (split(//, $optons))  {
 		unless $cfg::desc_opts{$_} =~ s/^don't //;
 }
 foreach (split(//, $optkeys)) {
-	$keymap_opts{$_} = ["setopt '$_'; keymap; win", $cfg::desc_opts{$_}];
+	&mapadd('keymap_opts', $_,
+		["setopt '$_'; keymap; win", $cfg::desc_opts{$_}]);
 }
 undef %cfg::desc_opts;
 
 ###############################################################################
 ## Subroutines ################################################################
 
-sub onquit { 1; }
+sub onrestart { 1 }
+sub onquit    { 1 }
 
 sub cfgcolorlong {
 	local $_ = join('', @_); my $s;

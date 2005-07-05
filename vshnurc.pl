@@ -8,13 +8,13 @@
 # Many of the scripts and supporting external configurations used via this
 # file are available at http://www.cs.indiana.edu/~kinzler/home.html.
 
-# Names used only within this .vshnurc are placed in the rc:: package.
+# Names used only within this vshnurc are placed in the rc:: package.
 # This file should be reloadable.
 
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(.vshnurc 1.0200 1.0200);
+($rc::vname, $rc::version, $rc::require) = qw(vshnurc 1.0203 1.0211);
 &addversions($rc::vname, $rc::version);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
@@ -63,6 +63,9 @@
 # 1.0128  14 Apr 2005	Delete pager[ar] config; No color reconfig if ! kinzler
 # 1.0129  17 Apr 2005	Add &rccolorlong for getfacls and listacls
 # 1.0200  29 Apr 2005	Version normalization
+# 1.0201   6 May 2005	Add &hostr
+# 1.0202  18 May 2005	Use &mapadd for typemap and keymap additions
+# 1.0203   2 Jun 2005	Add "go info:" option to G command
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -71,6 +74,8 @@
 $shell = 'tcsh' unless $?;		# for use by &shell
 
 $stty_cooked = '-istrip';		# corrections to `stty -raw echo`
+
+sub hostr { local $_ = shift; s/^dkinzler\b.*/$ENV{KH}/is; $_ }
 
 ###############################################################################
 ## Color reconfiguration ######################################################
@@ -86,16 +91,20 @@ if ($color && getpwnam('kinzler')) {
 
 $typemap_{''}[0] = 'sh $cfg::editor, "--", $_; winch';
 
-$typemap_{  '/(^|\/)_[^_].*\.mbox$/'} = $typemap_do{'/(^|\/|\.)mbox$/'};
-$typemap_do{'/(^|\/)_[^_].*\.mbox$/'} = $typemap_{''};
+&mapadd('typemap_',   '/(^|\/)_[^_].*\.mbox$/',
+	$typemap_do{'/(^|\/|\.)mbox$/'});
+&mapadd('typemap_do', '/(^|\/)_[^_].*\.mbox$/',
+	$typemap_{''}, '/(^|\/|\.)mbox$/');
 
-$typemap_{'/(^|\/)_comics_[^\/]*\.html?$/'} =
+&mapadd('typemap_', '/(^|\/)_comics_[^\/]*\.html?$/',
 	 ['sh "$ENV{HTMLVIEW} < $_q"; remove $_; win',
-	  'browse and remove this HTML file'];
-$typemap_{'/\.doc$/i'} = ['shell "doctxt -- $_q'  . $cfg::page,
-			  'view a text conversion of this Word file'];
-$typemap_{'/\.xls$/i'} = ['shell "xls2tsv -- $_q' . $cfg::page,
-			  'view a text conversion of this Excel file'];
+	  'browse and remove this HTML file']);
+&mapadd('typemap_', '/\.doc$/i',
+	 ['shell "doctxt -- $_q'  . $cfg::page,
+	  'view a text conversion of this Word file']);
+&mapadd('typemap_', '/\.xls$/i',
+	 ['shell "xls2tsv -- $_q' . $cfg::page,
+	  'view a text conversion of this Excel file']);
 
 $rc::retrm = '; ret("Remove?") && remove $_; winch';
 ${$typemap_do{'-d _'}[0]}[0] =~ s/"--/ifopt("C", "--color"), "--/;
@@ -112,42 +121,45 @@ $typemap_do{'/\.e?ps$/i'} =
 	  'print this PostScript file 2-up',	   '2rRnN', 'print 2-up'],
 	 ['sh "psnup -n 2 $_q | psduplex | lpr -h"; ret; winch',
 	  'print this PostScript file duplex 2-up', '4', 'print duplex 2-up']];
-$typemap_do{'/\.err$/'}	   = ['sh $cfg::editor, "-q", $_; winch',
-			      'quickfix edit based on this error file'];
-$typemap_do{'/\.html?$/i'} = ['sh "$ENV{HTMLVIEW} < $_q"; win',
-			      'browse this HTML file'];
-$typemap_do{'/\.p(rc|qa)$/i'} =
+&mapadd('typemap_do', '/\.err$/',
+	 ['sh $cfg::editor, "-q", $_; winch',
+	  'quickfix edit based on this error file'], '/\.fig$/');
+&mapadd('typemap_do', '/\.html?$/i',
+	 ['sh "$ENV{HTMLVIEW} < $_q"; win',
+	  'browse this HTML file'], '/\.iso$/i');
+&mapadd('typemap_do', '/\.p(rc|qa)$/i',
 	[['shell "+palm; pilot-file -d -- $_q' . $cfg::page,
 	  'view a dump of this Palm file', 'vVfF', 'view'],
 	 ['shell "+palm; exec pilot-xfer -i $_q"' . $rc::retrm,
-	  'download this file to a Palm',  'dDxX', 'download']];
-$typemap_do{'/\.pdb$/i'}      =
+	  'download this file to a Palm',  'dDxX', 'download']], '/\.pdb$/i');
+&mapadd('typemap_do', '/\.pdb$/i',
 	[@{$typemap_do{'/\.p(rc|qa)$/i'}},
 	 ['shell "+palm; txt2pdbdoc -d -- $_q' . $cfg::page,
-	  'read this Palm Doc file',	   'rRtT', 'read']];
-$typemap_do{'/\.url?$/'} = ['sh "xrshio - webrowse -mw < $_q"; win',
-			    'browse this URL file marked up'];
+	  'read this Palm Doc file',	   'rRtT', 'read']], '/\.pdf$/i');
+&mapadd('typemap_do', '/\.url?$/',
+	 ['sh "xrshio - webrowse -mw < $_q"; win',
+	  'browse this URL file marked up'], '/\.uu$/');
 $typemap_do{'4; /[Mm]akefile/'}[0] = 'shell getcmd "mak -f $_q"; ret; winch';
 $typemap_do{''} =
-	 [['sh $cfg::pager, "--", $_; winch',
-	   'view this file',		       'vV',   'view'],
-	  ['sh "sendfile", $_' . $rc::retrm,
-	   'mail this message file',	       'mMsS', 'mail'],
-	  [q/shell "+palm; install-memo -c '1) To Do' -- $_q"/ . $rc::retrm,
-	   'download this memo to a Palm',     'iI',   'download memo'],
-	  ['sh "enscript", "-Gh", "--", $_' . $rc::retrm,
-	   'print this text file',	       'pl',   'print'],
-	  ['sh "enscript -Gh -p- -- $_q | psduplex | lpr -h"' . $rc::retrm,
-	   'print this text file duplex',      'd',    'print duplex'],
-	  ['sh "enscript", "-2rGh", "--", $_' . $rc::retrm,
-	   'print this text file 2-up',	       '2rn',  'print 2-up'],
-	  ['sh "enscript -2rGh -p- -- $_q | psduplex | lpr -h"' . $rc::retrm,
-	   'print this text file duplex 2-up', '4',    'print duplex 2-up'],
-	  ['sh "mailp", "-from", "-noburstpage", "--", $_' . $rc::retrm,
-	   'print this mail file',	       'PL',   'print mail'],
-	  ['sh "mailp", "-from", "-landscape", "-noburstpage", "--", $_'
-	   . $rc::retrm,
-	   'print this mail file 2-up',	       'RN',   'print mail 2-up']];
+	[['sh $cfg::pager, "--", $_; winch',
+	  'view this file',		      'vV',   'view'],
+	 ['sh "sendfile", $_' . $rc::retrm,
+	  'mail this message file',	      'mMsS', 'mail'],
+	 [q/shell "+palm; install-memo -c '1) To Do' -- $_q"/ . $rc::retrm,
+	  'download this memo to a Palm',     'iI',   'download memo'],
+	 ['sh "enscript", "-Gh", "--", $_' . $rc::retrm,
+	  'print this text file',	      'pl',   'print'],
+	 ['sh "enscript -Gh -p- -- $_q | psduplex | lpr -h"' . $rc::retrm,
+	  'print this text file duplex',      'd',    'print duplex'],
+	 ['sh "enscript", "-2rGh", "--", $_' . $rc::retrm,
+	  'print this text file 2-up',	      '2rn',  'print 2-up'],
+	 ['sh "enscript -2rGh -p- -- $_q | psduplex | lpr -h"' . $rc::retrm,
+	  'print this text file duplex 2-up', '4',    'print duplex 2-up'],
+	 ['sh "mailp", "-from", "-noburstpage", "--", $_' . $rc::retrm,
+	  'print this mail file',	      'PL',   'print mail'],
+	 ['sh "mailp", "-from", "-landscape", "-noburstpage", "--", $_'
+	  . $rc::retrm,
+	  'print this mail file 2-up',	      'RN',   'print mail 2-up']];
 
 ###############################################################################
 ## Main keymap reconfiguration ################################################
@@ -159,29 +171,36 @@ $cfg::quemarkmsg = '';
 		'cd("~oracle/post") ? longls("-win", 1) : win',
 	     'cd "~/work"; win');
 
-$keymap_{"\cK"}	   = ['setcomplete \&rc::edtags;'
-		      . ' sh $cfg::editor, "-t", get "Tag:"; setcomplete;'
-		      . ' winch', 'edit in the file for the given tag'];
+&mapadd('keymap_', "\cK",
+	 ['setcomplete \&rc::edtags;'
+	  . ' sh $cfg::editor, "-t", get "Tag:"; setcomplete;'
+	  . ' winch', 'edit in the file for the given tag'], "\cL");
 $keymap_{"\cL"}[0] = 'point "-\$"; winch';
 unshift(@{$keymap_{"\cQ"}},
-	['do $vshnurc; err $@; win', 'reload just the personal rc file '
-	 . '($vshnurc)', "rR\cR", 'load $vshnurc'])
+	 ['do $vshnurc; err $@; win', 'reload just the personal rc file '
+	  . '($vshnurc)', "rR\cR", 'load $vshnurc'])
 		unless $keymap_{"\cQ"}[0][2] =~ /r/i;
-$keymap_{","}	   = ['evalnext \@rc::ring', 'cycle to monitored directories'];
-$keymap_{"A"}	   = ['longls "-win", "getfacls --"',
-		      'long list files with their POSIX ACL info'];
-$keymap_{"C"}	   = ['longls "-win", "listacls"',
-		      'long list files with their AFS ACL info'];
-$keymap_{"G"}	   =
+&mapadd('keymap_', ",",
+	 ['evalnext \@rc::ring', 'cycle to monitored directories'], "-");
+&mapadd('keymap_', "A",
+	 ['longls "-win", "getfacls --"',
+	  'long list files with their POSIX ACL info'], "B");
+&mapadd('keymap_', "C",
+	 ['longls "-win", "listacls"',
+	  'long list files with their AFS ACL info'], "F");
+&mapadd('keymap_', "G",
 	[['shell getcmd "go"; winch',
 	  'browse the URL guessed from the given piece(s)',
 	  'gG',   'url pieces'],
 	 ['sh "go", "url:" . gets "Go URL:"; winch',
 	  'browse the given URL',
 	  'uUkK', 'url (including Netscape Internet Keywords)'],
+	 ['sh "go", "info:" . gets "Go Info URL:"; winch',
+	  'browse the information about the given URL',
+	  'iI',   'url info (Google Info)'],
 	 ['sh "go", "arc:" . gets "Go Archive URL:"; winch',
 	  'browse historical versions of the given URL',
-	  'vV',   'url versions'],
+	  'vV',   'url versions (Wayback)'],
 	 ['sh "grepbm", "-b", "-i", "--", gets "Go Regexp:"; winch',
 	  'browse the matched browser bookmarks',
 	  'bB',   'bookmarks'],
@@ -190,7 +209,7 @@ $keymap_{"G"}	   =
 	  'sS',   'search (Google)'],
 	 ['sh "go", "image:" . gets "Go Image:"; winch',
 	  'browse the results for the given web image search query',
-	  'iI',   'image (Google Images)'],
+	  '@',    'image (Google Images)'],
 	 ['sh "go", "news:" . gets "Go News:"; winch',
 	  'browse the results for the given usenet search query',
 	  'nN',   'news (Google Groups)'],
@@ -235,9 +254,10 @@ $keymap_{"G"}	   =
 	 ['sh "hmrccal"; winch', 'browse the HMRC calendar',
 	  'cC'],
 	 ['sh "webdaily", "-v"; winch', 'browse my daily web pages',
-	  'dD']];
-$keymap_{"H"}	 = ['sh "dailyh"; ret; winch', 'run `dailyh`'];
-$keymap_{"J"}	 =
+	  'dD']], "L");
+&mapadd('keymap_', "H",
+	 ['sh "dailyh"; ret; winch', 'run `dailyh`'], "L");
+&mapadd('keymap_', "J",
 	[['sh "snaps -u' . $cfg::page,
 	  "list the user's current processes",	    'ujJ', 'user'],
 	 ['sh "snaps -s -l' . $cfg::page,
@@ -245,21 +265,26 @@ $keymap_{"J"}	 =
 	 ['sh "pstree -alp $user' . $cfg::page,
 	  "tree list the user's current processes", 'UtT', 'user tree'],
 	 ['sh "pstree -alp' . $cfg::page,
-	  'tree list all system processes',	    'S',   'system tree']];
-$keymap_{"K"}	 = ['sh "make"; ret; winch', 'run `make`'];
-$keymap_{"M"}[0] =  'shell getcmd "mak"; ret; winch';
-$keymap_{"N"}	 = ['sh "nn"; winch', 'run `nn`'];
+	  'tree list all system processes',	    'S',   'system tree']],
+	"L");
+&mapadd('keymap_', "K",
+	 ['sh "make"; ret; winch', 'run `make`'], "L");
+$keymap_{"M"}[0]  = 'shell getcmd "mak"; ret; winch';
+&mapadd('keymap_', "N",
+	 ['sh "nn"; winch', 'run `nn`'], "O");
 $keymap_{"Y"}[0] .= '; $cwd eq untilde("~/work") && msg filecount';
-$keymap_{"^"}	 = ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
-		 .  ' point "-\$"; win',
-		    "cd to the user's working directory"];
+&mapadd('keymap_', "^",
+	 ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
+	  . ' point "-\$"; win',
+	  "cd to the user's working directory"], "_");
 
 ###############################################################################
 ## "Choose" keymap reconfiguration ############################################
 
 $rc::rmunchoose = '("Remove?") && remove @choose' . $cfg::unchoose;
-$keymap_choose{"<"}    = ['sh "pushmime", @choose; ret' . $cfg::unchoose,
-			  'explode the chosen mail messages into directories'];
+&mapadd('keymap_choose', "<",
+	 ['sh "pushmime", @choose; ret' . $cfg::unchoose,
+	  'explode the chosen mail messages into directories'], "@");
 $keymap_choose{"D"}    =
 	[['shell "rm -r --", quote(@choose), "; ' . $cfg::shbeep
 	  . ' &"; sleep 1' . $cfg::unchoose,
@@ -270,22 +295,28 @@ $keymap_choose{"D"}    =
 	  . ' recursively remove the chosen files/directories (background)',
 	  'sS',   'secure recursive remove']];
 $keymap_choose{"E"}[0] = 'sh $cfg::editor, "--", @choose' . $cfg::unchoose;
-$keymap_choose{"J"}    = ['sh "push", "--", @choose, getfile "Directory:"; ret'
-			  . $cfg::unchoose,
-			  'push the chosen files into the given directory'];
-$keymap_choose{"K"}    = ['sh "pop", "--", @choose; ret' . $cfg::unchoose,
-			  'pop files out of the chosen directories'];
-$keymap_choose{"P"}    = ['shell "+palm; exec pilot-xfer -i", quote(@choose);'
-			  . ' ret' . $rc::rmunchoose,
-			  'download the chosen files to a Palm'];
-$keymap_choose{"S"}    = ['sh "sendfile", @choose; ret' . $rc::rmunchoose,
-			  'mail the chosen message files'];
-$keymap_choose{"Z"}    = ['shell "z --", quote(@choose), "; ' . $cfg::shbeep
-			  . ' &"; sleep 1' . $cfg::unchoose,
-			  '(un)tar and (de)feather the chosen files'
-			  . ' and directories (background)'];
-$keymap_choose{"_"}    = ['shell "_", quote(@choose)' . $cfg::unchoose,
-			  'rename the chosen files without whitespace'];
+&mapadd('keymap_choose', "J",
+	 ['sh "push", "--", @choose, getfile "Directory:"; ret'
+	  . $cfg::unchoose,
+	  'push the chosen files into the given directory'], "O");
+&mapadd('keymap_choose', "K",
+	 ['sh "pop", "--", @choose; ret' . $cfg::unchoose,
+	  'pop files out of the chosen directories'], "O");
+&mapadd('keymap_choose', "P",
+	 ['shell "+palm; exec pilot-xfer -i", quote(@choose);' . ' ret'
+	  . $rc::rmunchoose,
+	  'download the chosen files to a Palm'], "R");
+&mapadd('keymap_choose', "S",
+	 ['sh "sendfile", @choose; ret' . $rc::rmunchoose,
+	  'mail the chosen message files'], "[");
+&mapadd('keymap_choose', "Z",
+	 ['shell "z --", quote(@choose), "; ' . $cfg::shbeep . ' &"; sleep 1'
+	  . $cfg::unchoose,
+	  '(un)tar and (de)feather the chosen files'
+	  . ' and directories (background)'], "[");
+&mapadd('keymap_choose', "_",
+	 ['shell "_", quote(@choose)' . $cfg::unchoose,
+	  'rename the chosen files without whitespace'], "`");
 
 ###############################################################################
 ## "Options" keymap reconfiguration ###########################################

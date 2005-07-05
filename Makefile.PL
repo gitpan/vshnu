@@ -2,7 +2,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0200',	# package version; also ../*.html,
+	VERSION		=> '1.0211',	# package version; also ../*.html,
 					# mailing list?, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
@@ -51,6 +51,7 @@ WriteMakefile (
 # 1.0129   1 Feb 2005	Workaround Term::Screen 1.03 "fixes"; Use English
 # 1.0136  18 Apr 2005	Add built-in df and altls coloring; Fix bugs, pagers
 # 1.0200   1 May 2005	Add MIME type and mailcap/vshnucap support
+# 1.0211   5 Jul 2005	Fix bugs; Recognize mouse events; Search histories
 
 sub MY::postamble { q~
 import:

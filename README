@@ -91,12 +91,12 @@ o Separate per-site and per-user configurability
 * Perl statements may be {{embedded}} within shell commands
 * A Perl "where" clause to subset the displayed files
 
-o Can use mailcap files for specifying file actions by MIME type
+o Can use mailcap(4) files for specifying file actions by MIME type
 o Can use the CD_PATH environment variable as a search path for files
   and directories
 o Recognizes the following standard environment variables:
   ANSI_COLORS_DISABLED, DISPLAY, EDITOR, HOME, HOST, LS_COLORS, MAIL,
-  MAILCAPS, PAGER, PATH, PERL_RL, SHELL and VISUAL
+  MAILCAPS, PAGER, PATH, PERL_RL, SHELL, TERM and VISUAL
 
 ------------------------------  HISTORY  -------------------------------
 
@@ -223,7 +223,7 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     significant work within these files.
 
     If the Mail::Cap, and perhaps MIME::Types, modules are available,
-    vshnu's supplied configuration will use any mailcap files it finds
+    vshnu's supplied configuration will use any mailcap(4) files it finds
     (in $MAILCAPS or $HOME/.mailcap, /etc/mailcap, /usr/etc/mailcap and
     /usr/local/etc/mailcap) for offered file actions for any file types
     it doesn't otherwise cover.  Also, it will recognize a vshnu-specific
@@ -293,6 +293,10 @@ regarding vshnu is available at
 
 	http://groups.yahoo.com/group/vshnu
 
+An article on vshnu in Jerry Peek's Power Tools column
+<http://www.linux-mag.com/power/> in Linux Magazine (US version) is
+expected in the October 2005 edition.
+
 A Japanese review and showcase of vshnu was published in the September
 2001 issue of Linux Magazine <http://www.ascii.co.jp/linuxmag/>,
 pages 124-125.
@@ -335,6 +339,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler		   revised May	    2005
+http://www.cs.indiana.edu/~kinzler		   revised June     2005
 
 Your feedback is welcome!

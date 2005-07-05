@@ -16,7 +16,7 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0200);
+($vname, $version) = qw(vshnu 1.0211);
 
 # 1.0000   7 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -67,6 +67,16 @@ $debug_ch = 0;
 # 1.0141  24 Apr 2005	Use V and v options for audio and visual beeps
 # 1.0142  27 Apr 2005	Don't show \ as \\ in help keys; Add $typemaptab
 # 1.0200  29 Apr 2005	Add mailcap support with Mail::Cap; Add &xsh
+# 1.0201   3 May 2005	Add xterm mouse mode support; Add &restart
+# 1.0202   4 May 2005	Add starter &domouse for mouse event reporting
+# 1.0203   6 May 2005	Add $hostname and $hostr (from any &hostr) globals
+# 1.0204   9 May 2005	Use P option and add &bybase
+# 1.0205   9 May 2005	Append dir and file hists to &dotypepath search path
+# 1.0206  10 May 2005	Add &users and &groups
+# 1.0207  11 May 2005	Add &completetypepath and enhance &setcomplete
+# 1.0208  18 May 2005	Add &mapadd and &akeys
+# 1.0209   1 Jul 2005	Fix $bagcol bug from 1.0137 and &diskspace align bug
+# 1.0211   5 Jul 2005	Use &quit vs die or exit mostly
 
 ###############################################################################
 ## Modules setup ##############################################################
@@ -105,7 +115,7 @@ $file_i	   = `file -Lib /etc/passwd 2> /dev/null` =~ /^text/i;
 $mimetypes = (defined $MIME::Types::VERSION) ? new MIME::Types : undef;
 
 &winch_off();
-$rl = new Term::ReadLine 'vshnu' or die "$0: can't create readline ($!)";
+$rl = new Term::ReadLine 'vshnu' or &quit("$0: can't create readline ($!)");
 &winch_on();
 ($rlmodule = $rl->ReadLine) =~ s/.*Term::ReadLine:://;
 $rl->ornaments(0)				  if $rlmodule =~ /^Stub/i;
@@ -163,14 +173,14 @@ sub versions {
 	join("\n", map { sprintf($fmt, $_, $versions{$_}) } @v) . "\n";
 }
 
-print(&versions()), exit if $ARGV_V;
+print(&versions()), &quit() if $ARGV_V;
 
 ###############################################################################
 ## Initial setup ##############################################################
 
 $ch	= $ch_list = $err = $stty_cooked = $stty_raw = ''; $cooked = 0;
 &sttyfix(1);
-$scr	= new Term::Screen or die "$0: cannot create screen ($!)";
+$scr	= new Term::Screen or &quit("$0: cannot create screen ($!)");
 &sttyfix();
 $scr->noecho();
 &sigs_on();
@@ -185,15 +195,16 @@ $normal  = $scr->{TERM}->Tputs('me', 1) ||
 map($ansicolor{$Term::ANSIColor::attributes{$_} + 0} = $_,
     keys %Term::ANSIColor::attributes);
 
-$aubeep = $scr->{TERM}->Tputs('bl', 1) || "\a";
-$vibeep = $scr->{TERM}->Tputs('vb', 1);
+$aubeep	 = $scr->{TERM}->Tputs('bl', 1) || "\a";
+$vibeep	 = $scr->{TERM}->Tputs('vb', 1);
 
-$user  = &uid2name($>);
-($host = $ENV{'HOST'} || $ENV{'HOSTNAME'} ||
-	 eval { &hostname } || 'UNKNOWN') =~ s/\..*//;
-$depth = 1;
+$user	  = &uid2name($>);
+$hostname = $ENV{'HOST'} || $ENV{'HOSTNAME'} ||
+	    eval { &hostname } || 'UNKNOWN';
+($host	  = $hostname) =~ s/\..*//;
+$depth	  = 1;
 
-%keymap_ = ("\034" => ['last', 'quit $vname']);
+%keymap_ = ("\034" => ['last', 'quit $vname']);	# ^\
 
 &setnorun('off'); &longlen('min'); $long = 0; &longtrunc();
 require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
@@ -202,11 +213,17 @@ require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
 &typemap('', 1); &keymap('', 1);
 &initopts();
 
+$hostr = (defined &hostr) ? &hostr($hostname) : $hostname;
+
+$mouse = &mouse($forcemouse ? 1 : ());
+$scr->def_key('mous', $mouse) if $mouse;
+&mousemode($moused = ($initmouse =~ /^on/i) ? 1 : 0);
+
 $mail = -f $mailbox;
 
 @cdhist = @cdhist || map({'ls' => $_}, @ARGV);
 $pwd = (@cdhist) ? $cdhist[0]{'ls'} : &pwd();
-$pwd ne '' && &cd($pwd) or die "$0: cannot cd $pwd\n";
+$pwd ne '' && &cd($pwd) or &quit("$0: cannot cd '$pwd'\n");
 undef $pwd;
 
 if ($insertkey ne '') {
@@ -219,13 +236,25 @@ require "dumpvar.pl" if $debug;		# to enable &dumpvar(PACKAGE, VARS)
 					# and &dumpValue(DATAPTR)
 
 ###############################################################################
+## Configuration assistance subroutines #######################################
+
+sub mapadd {
+	my($map, $key, $val, $before) = @_;
+	my($hmap, $amap)	      = eval "(\\\%$map, \\\@$map)";
+	return if exists $$hmap{$key};
+	$$hmap{$key} = $val;
+	return unless @$amap || (keys %$hmap) + 0 == 1;
+	splice(@$amap, &aindex($before, @$amap), 0, $key);
+}
+
+###############################################################################
 ## Main execution loop and subroutines ########################################
 
 &win();
 
 while (1) {
 	$ch = $scr->getch();
-	$scr->flush_input();	# partly broken in Term::Screen 1.00 *shrug*
+	$scr->flush_input();	# partly broken in Term::Screen 1.00- *shrug*
 	$ch_list = &scrtruncr($ch_list . ((length($ch) > 1) ? " $ch" :
 			      sprintf(' 0%o', ord $ch))) if $debug_ch;
 
@@ -285,7 +314,8 @@ sub cmdstrs {
 
 sub setnorun {
 	$norun = ($_[0] eq 'toggle') ? ! $norun :
-		 ($_[0] eq 'once')   ? 'once'	: ($_[0] eq 'on') ? 1 : 0;
+		 ($_[0] eq 'once')   ? 'once'	:
+		 ($_[0] eq 'on')     ? 1	: 0;
 }
 
 ###############################################################################
@@ -363,12 +393,16 @@ sub win_err {
 sub win_row2 {
 	$where =~ s/^\s+$//;
 	my @bits = ();
-	push(@bits, "depth=$depth")   if $depth != 1;
-	push(@bits, "opts=" . join('', sort keys %opts)) if %opts;
-	push(@bits, "where={$where}") if $where =~ /\S/ &&
+	push(@bits, "depth=$depth")	 if $depth != 1;
+	push(@bits, "opts=" . &viewas(join('', sort keys %opts)))
+					 if %opts;
+	push(@bits, "where={$where}")	 if $where =~ /\S/ &&
 		! grep($altls == $_, \@choose, \@cdhist, \@dohist);
 	push(@bits, "long=$longlabel")	 if $longlabel;
 	push(@bits, "cols=$maxfilecols") if ! $long && $maxfilecols;
+	push(@bits, "mouse=" . ($moused ? 'on' : 'off'))
+					 if $mouse &&
+					    ($moused xor $initmouse =~ /^on/i);
 	&win_decor('', $lstitle, join(', ', @bits), 1);
 }
 
@@ -563,9 +597,9 @@ sub page {
 	    (s/^\+//)  ? $bagcol  + $_					      :
 	    (s/^\-//)  ? $bagcol  - $_					      :
 	    (s/^>//)   ? ($bagcol + $_ - $filecol) %
-			 (&min($filecols, $pages - $filecol) + $filecol || 1) :
+			 (&min($filecols, $pages - $filecol) || 1) + $filecol :
 	    (s/^<//)   ? ($bagcol - $_ - $filecol) %
-			 (&min($filecols, $pages - $filecol) + $filecol || 1) :
+			 (&min($filecols, $pages - $filecol) || 1) + $filecol :
 	    (/^\d/)    ? $filecol + $_ - 1				      :
 	    (s/^\\?//) ? ((exists $col{$_}) ? $col{$_} :
 			  (($col{$_}, $row{$_}) = &pageto($_))[0])	   : 0;
@@ -583,12 +617,12 @@ sub page {
 	    (s/^\-//)  ? $bagrow  - $_				  :
 	    (s/^>//)   ? ($bagrow + $_) % ($bagrows || 1)	  :
 	    (s/^<//)   ? ($bagrow - $_) % ($bagrows || 1)	  :
-	    (s/^]//)   ? return ! $bagrows ? 0 : &page('',
+	    (s/^]//)   ? return((! $bagrows) ? 0 : &page('',
 			     '>' . int(($bagrow + 1) / $bagrows),
-			     ($bagrow + 1) % $bagrows + 1)	  :
-	    (s/^\[//)  ? return &page('',
+			     ($bagrow + 1) % $bagrows + 1))	  :
+	    (s/^\[//)  ? return(&page('',
 			     ($bagrow) ? '<0'    : '<1',
-			     ($bagrow) ? $bagrow : "+$filerows")  :
+			     ($bagrow) ? $bagrow : "+$filerows")) :
 	    (/^\d/)    ? $_ - 1					  :
 	    (s/^\\?//) ? ((exists $row{$_}) ? $row{$_} :
 			  (&pageto($_))[1])			  : 0;
@@ -810,14 +844,38 @@ sub colorlongline {
 
 sub dotypepath {
 	my $todo = &untilde($_[0]);
-	return &dotype($todo) if $todo =~ /^(\/|$)/;
+#	return &dotype($todo) if $todo =~ /^(\/|$)/;	# old behavior
+	return &dotype($todo) if $todo eq '' || $todo =~ /^\// &&   -e $todo;
+	&beep(), &win(), return		     if $todo =~ /^\// && ! -e $todo;
 
-	foreach ('', split(':', $ENV{'CD_PATH'})) {
-		my $file = ((/./) ? &untilde($_) . '/' : '') . $todo;
+	foreach ('', &histpaths(split(':', $ENV{'CD_PATH'}))) {
+		my $file = ((/\/$/) ? &untilde($_)	 :
+			    (/./)   ? &untilde($_) . '/' : '') . $todo;
 		return &dotype($file) if -e $file;
 	}
 #	&dotype($todo);	# old behavior if file not found
 	&beep(); &win();
+}
+
+# There's a glitch here in that the uncompleted word is also considered a
+# potential completion match even if it doesn't exist.  Shifting it off from
+# the beginning of what completion_matches returns causes worse problems.
+
+sub completetypepath {		# only call if $rlmodule eq 'Gnu'
+	my $fcf = $rl->Attribs->{'filename_completion_function'};
+	my @r	= ();
+	foreach (($_[0] =~ /^[\/~]/) ? ('') :
+			('', &histpaths(split(':', $ENV{'CD_PATH'})))) {
+		my $head = (/\/$/) ? $_ : (/./) ? $_ . '/' : '';
+		push(@r, map { substr($_, length($head)) }
+			     $rl->completion_matches($head . $_[0], $fcf));
+	}
+	@r;
+}
+
+sub histpaths {
+	&unique(@_, (map { $_->{'ls'}	       || ()  } @cdhist),
+		    (map { /\/*[^\/]*\/*$/; $` || '/' } @dohist));
 }
 
 sub dotype {
@@ -830,7 +888,8 @@ sub dotype {
 	local $_m  = &mimetype($_);
 	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq, $_mq) =
 		map { &quote($_) } ($_, $_r, $_e, $_h, $_t, $_f, $_m);
-	local $_d  = `file -L $_q`; chomp $_d; local $_dq = &quote($_d);
+	local $_d  = ($_ eq '') ? '' : `file -L $_q`; chomp $_d;
+	local $_dq = &quote($_d);
 
 	@dohist = ($_f, grep($_ ne $_f, @dohist)) unless -d;
 	my $max = eval $maxdohist;
@@ -881,6 +940,8 @@ sub choosebyn {
 
 sub grepls { &myeval("grep { $_[0] } \@ls") }
 sub lsall  { ($altls) ? @ls : grep { ! /^\.\.?$/ } @ls }
+
+sub matchfiles { &grepls('/' . $_[0] . '/') }
 
 ###############################################################################
 ## File operation subroutines #################################################
@@ -1075,6 +1136,7 @@ sub ls {
 	@ls = &opt('f')			?		@ls :
 	      &opt('/')			? sort bydepth	@ls :
 	      &opt('F')			? sort bycolor	@ls :
+	      &opt('P')			? sort bybase	@ls :
 	      &opt('X')			? sort byext	@ls :
 	      &opt('m')			? sort bymode	@ls :
 	      &opt('l')			? sort bynlink	@ls :
@@ -1281,6 +1343,13 @@ sub unlessopt {
 ###############################################################################
 ## Sorting subroutines ########################################################
 
+sub bybase {
+	my($abase, $bbase) = ($a, $b);
+	$abase =~ s/\/*$//; $abase =~ s/.*\///;
+	$bbase =~ s/\/*$//; $bbase =~ s/.*\///;
+	$abase cmp $bbase || &byname();
+}
+
 sub byext {
 	my($aext, $bext);
 	$aext = '' unless ($aext = $a) =~ s/..*\.//;
@@ -1351,7 +1420,7 @@ sub collapse	 { &expanddir('c', @_) }
 sub expandtoggle { &expanddir('t', @_) }
 sub expanddir {
 	return unless $depth;
-	my $act = shift;	# expand || collapse || toggle
+	my $act = shift;
 	$act = ($act =~ /^e/i) ? 1 : ($act =~ /^c/i) ? -1 : 0;
 	foreach (@_) {
 		my $def = exists $cdhist[0]{'expand'}{$_} unless $act;
@@ -1385,6 +1454,51 @@ sub expdirs {
 	my $patt = "^$dir" . (($dep < 0) ? '(\/|$)' :
 			      '(\/+[^\/]+){0,' . ($dep - 1) . '}\/*$');
 	grep { /$patt/ } keys %{$cdhist[0]{'expand'}};
+}
+
+###############################################################################
+## Mouse subroutines ##########################################################
+
+sub mouse {
+	return(($scr->{TERM}->Tputs('Km', 1) eq "\e[M" ||
+		$scr->{TERM}->Tputs('Km', 1) eq '' &&
+		$ENV{'TERM'} =~ /(\b|_)(xterm|kterm|linux)/) ?
+		  "\e[M" : undef) if ! @_;
+	($_[0]) ? "\e[M" : undef;
+}
+
+sub mousemode {				# See also xterm doc ctlseqs.*
+	return 0 unless $mouse;
+	print((($_[0] =~ /^tog/i) ? ($moused = $moused ? 0 : 1) :
+	       ($_[0] =~ /./)	  ? $_[0] : $moused) ?
+# X10 compatibility mode: only unmodified Button 1-3 down
+#			"\e[?9h"    : "\e[?9l"
+# VT200-style normal tracking mode: adds modifiers, Button up, Wheel
+			"\e[?1000h" : "\e[?1000l"
+	     );
+}						
+
+# In some older terms, it's been observed that Wheel events are detected
+# as Button up events. *shrug*
+# It's been seen that a very quick Button 1 down/up may not be detected
+# correctly, leading to a confusing series of unexpected vshnu commands
+# being executed.  Don't know where the cause is, but it doesn't appear
+# to ever happen on fast computers with a locally running new xterm.
+
+sub domouse {
+	my $dir = 2;
+	my $ch  = ord($scr->getch());
+ 	my $btn = ($ch		    & 0103) + 1;
+	my $col = ord($scr->getch()) - 040  - 1;
+	my $row = ord($scr->getch()) - 040  - 1;
+	my($s, $c, $m) = ($ch & 04, $ch & 020, $ch & 010);
+	$dir = 1,	  $btn = 0 if $btn == 4;
+	$dir = $btn - 64, $btn = 4 if $btn >= 65;
+	&msg(($m ? 'Mod1-' : '') .
+	     ($c ? 'Ctrl-' : '') .
+	     ($s ? 'Shft-' : '') . join(' ', grep(/./,
+		  ($btn == 4) ? 'Wheel' : ('Button', $btn || ''),
+		  ($dir == 1) ? 'up' : 'down', "at ($col, $row)")));
 }
 
 ###############################################################################
@@ -1494,10 +1608,14 @@ sub cmds {	# limited to 26 default keys (a-z), not guaranteed unique
 ## Operation subroutines ######################################################
 
 sub setcomplete {
-	if (ref $_[0]) {
-		$rl->Attribs->{'completion_function'}	    = $_[0];
+	my $fn = shift;
+	if ($fn eq 'function') {
+		$rl->Attribs->{'completion_function'};
+	} elsif (ref $fn) {
+		$rl->Attribs->{'completion_function'}	    = $fn
+			if ! @_ || grep($rlmodule eq $_, @_);
 	} else {
-		delete $rl->Attribs->{'completion_function'};
+		eval { delete $rl->Attribs->{'completion_function'} };
 		$rl->Attribs->{'completion_entry_function'} = undef;
 	}
 }
@@ -1509,7 +1627,8 @@ sub rlhistget {
 	$rl->SetHistory(@$hist)  if $feat;
 	my $str = &getstr(@_);
 	@$hist = $rl->GetHistory if $feat;
-	$str;
+	$str =~ s/ $// if ! s/\\ $/ / && &setcomplete('function');
+	$str;				# clear space from readline completion
 }
 
 sub get      { &rlhistget(\@rlhist_,	  @_) }
@@ -1518,7 +1637,7 @@ sub getjunk  { &rlhistget(\@rlhist_junk,  @_) }
 
 sub getfile  {
 	local $_ = &rlhistget(\@rlhist_file, @_);
-	s/ $// unless s/\\ $/ /;	# clear space from filename completion
+	s/ $// unless s/\\ $/ /;	# clear space from readline completion
 	$_;
 }
 
@@ -1718,7 +1837,7 @@ sub diskspace {
 	my %mag  = (1 => 'K', 2 => 'M', 3 => 'G', 4 => 'T');
 	foreach (@args) {
 		my($u, $a)     = ($df->used($_), $df->avail($_));
-		my($t, $f, $s) = ($u + $a, 1, '');
+		my($t, $f, $s) = ($u + $a, 1, ' ');
 		foreach (reverse sort keys %mag) {
 			($f, $s) = (1024 ** $_, $mag{$_}), last
 				if $t > 1024 ** ($_ + 1);
@@ -1770,8 +1889,10 @@ sub winch_on  { $SIG{'WINCH'} = 'winch'   }
 
 sub bakescr {
 	(($_[0] =~ /./) ? $_[0] : $cooked)
-		? eval { system("stty -raw echo $stty_cooked") }
-		: eval { system("stty raw -echo $stty_raw") };
+		? do { &mousemode(0);
+		       eval { system("stty -raw echo $stty_cooked") } }
+		: do { eval { system("stty raw -echo $stty_raw") };
+		       &mousemode() };
 	# These stty commands can have the unfortunate side-effect of
 	# changing a setting that the user may not want changed, even
 	# outside of vshnu -- eg -istrip for 8-bit characters.  You
@@ -1797,7 +1918,7 @@ sub getkey {
 	$scr->puts(join(' ', map(&color($_, $co_decor), @_)) . ' ')
 	    ->clreol() if @_;
 	my $ch = $scr->getch();
-	$scr->flush_input();	# partly broken in Term::Screen 1.00 *shrug*
+	$scr->flush_input();	# partly broken in Term::Screen 1.00- *shrug*
 	$ch . '';
 }
 
@@ -1894,12 +2015,19 @@ sub stop {
 		if $tmpenv && -e $tmpenv;
 }
 
+sub restart {
+	&onrestart()  if defined &onrestart;
+	&mousemode(0);
+	exec $0;
+}
+
 sub quit {
 	&onquit()  if defined &onquit;
 	&wtmpcwd() if $tmpcwd;
 	&bakescr(1);
 	undef $scr;
 	undef $rl;
+	warn "\r", @_ if @_;
 	exit;
 }
 
@@ -1966,6 +2094,18 @@ sub xsh {
 sub xshell {
 	&err('DISPLAY not defined'), return unless $ENV{'DISPLAY'};
 	&shell(@_, '&');
+}
+
+sub users {
+	local $_; my @r = ();
+	setpwent; push(@r, $_) while $_ = getpwent; endpwent;
+	sort @r;
+}
+
+sub groups {
+	local $_; my @r = ();
+	setgrent; push(@r, $_) while $_ = getgrent; endgrent;
+	sort @r;
 }
 
 sub uid2name {
@@ -2074,10 +2214,18 @@ sub aindex {
 	($n > $#_) ? -1 : $n;
 }
 
+sub akeys { my $n = 1; grep { $n++ % 2 } @_ }
+
 sub uniq {
 	my @r = ();
 	foreach (@_) { unshift(@r, $_) if ! @r || $r[0] ne $_ }
 	reverse @r;
+}
+
+sub unique {
+	my @r = (); my %seen = ();
+	foreach (@_) { push(@r, $_) unless $seen{$_}++ }
+	@r;
 }
 
 sub seqshort {
