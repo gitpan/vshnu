@@ -16,7 +16,7 @@ $debug_ch = 0;
 ###############################################################################
 ## Change log #################################################################
 
-($vname, $version) = qw(vshnu 1.0211);
+($vname, $version) = qw(vshnu 1.0300);
 
 # 1.0000   7 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -77,6 +77,20 @@ $debug_ch = 0;
 # 1.0208  18 May 2005	Add &mapadd and &akeys
 # 1.0209   1 Jul 2005	Fix $bagcol bug from 1.0137 and &diskspace align bug
 # 1.0211   5 Jul 2005	Use &quit vs die or exit mostly
+# 1.0212  28 Dec 2005	Use @*map_* for typemap and help ordering; Add &map*
+# 1.0213  28 Jan 2006	Add &ext and &Ext
+# 1.0214   6 Apr 2006	Delete &help and &helpmark pager args
+# 1.0215   8 Apr 2006	Add &run, &run_syntax and &ext_syntax
+# 1.0216  23 Apr 2006	Add &mousetxt, &mousemap, &mev2c, &c2mev and &pushmap
+# 1.0217  14 May 2006	Add &setsm* and use for file*; Add &keyprompt
+# 1.0218  21 May 2006	Run screenmap cmds; Use @_argv in &myeval; Add &set_x
+# 1.0219   8 Feb 2007	Enhance &longlen argument syntax
+# 1.0220  13 Feb 2007	Fix various Perl::Critic coding criticisms
+# 1.0221  11 Apr 2007	Add = and ! flags to pushmap arg; Add &dotypein
+# 1.0222  15 Apr 2007	Add new screen zones for mousemaps; Add &decolor
+# 1.0223  20 Apr 2007	Add PIPE handling to &sigs_*; Fix mouse support
+# 1.0224  17 May 2007	Add $userhostr and &atabsfile
+# 1.0300   8 Jul 2007	Version normalization
 
 ###############################################################################
 ## Modules setup ##############################################################
@@ -202,6 +216,7 @@ $user	  = &uid2name($>);
 $hostname = $ENV{'HOST'} || $ENV{'HOSTNAME'} ||
 	    eval { &hostname } || 'UNKNOWN';
 ($host	  = $hostname) =~ s/\..*//;
+$userhost = "$user\@$host";
 $depth	  = 1;
 
 %keymap_ = ("\034" => ['last', 'quit $vname']);	# ^\
@@ -210,13 +225,15 @@ $depth	  = 1;
 require($vshnucfg = $ENV{'VSHNUCFG'} || $default_vshnucfg ||
 		    ((-f "$ENV{'HOME'}/.vshnucfg") ? "$ENV{'HOME'}/.vshnucfg"
 						   : 'vshnucfg.pl'));
-&typemap('', 1); &keymap('', 1);
+&typemap('', 1); &keymap('', 1); &mousemap('', 1);
 &initopts();
 
-$hostr = (defined &hostr) ? &hostr($hostname) : $hostname;
+$hostr	   = (defined &hostr) ? &hostr($hostname) : $hostname;
+$userhostr = "$user\@$hostr";
 
 $mouse = &mouse($forcemouse ? 1 : ());
 $scr->def_key('mous', $mouse) if $mouse;
+($Button, $Brow, $Bcol) = (undef) x 3;
 &mousemode($moused = ($initmouse =~ /^on/i) ? 1 : 0);
 
 $mail = -f $mailbox;
@@ -228,24 +245,12 @@ undef $pwd;
 
 if ($insertkey ne '') {
 	&rl_bind_insert_vshnu($insertkey);	# Gnu ReadLine only
-	$keymap_{":$insertkey"} = $insertcmd	# only for help listing
-		if $insertcmd;
+	&mapadd('keymap_', ":$insertkey",	# only for help listing
+		$insertcmd) if $insertcmd;
 }
 
-require "dumpvar.pl" if $debug;		# to enable &dumpvar(PACKAGE, VARS)
+require 'dumpvar.pl' if $debug;		# to enable &dumpvar(PACKAGE, VARS)
 					# and &dumpValue(DATAPTR)
-
-###############################################################################
-## Configuration assistance subroutines #######################################
-
-sub mapadd {
-	my($map, $key, $val, $before) = @_;
-	my($hmap, $amap)	      = eval "(\\\%$map, \\\@$map)";
-	return if exists $$hmap{$key};
-	$$hmap{$key} = $val;
-	return unless @$amap || (keys %$hmap) + 0 == 1;
-	splice(@$amap, &aindex($before, @$amap), 0, $key);
-}
 
 ###############################################################################
 ## Main execution loop and subroutines ########################################
@@ -259,6 +264,7 @@ while (1) {
 			      sprintf(' 0%o', ord $ch))) if $debug_ch;
 
 	$cmd = &keymapcmd();
+	# doesn't catch cdhist's in commands run via &domouse
 	$cdhistp = 0 unless grep { /\bcdhist\b/ } &cmdstrs($cmd);
 	&cmdeval($cmd);
 	&win_err() if $err ne '';
@@ -273,37 +279,35 @@ sub keymapcmd {
 }
 
 sub cmdeval {
-	my $cmd = shift;
-	&echo(&helpstr($ch, '', 8, $cmd)), &ret(),
+	my($cmd, $key) = @_;
+	&echo(&helpstr($ch, '', ($ch eq 'mous') ? $mousemaptab : 8, $cmd,
+		       ($ch eq 'mous') ? \&c12mev : '', $key)), &ret(),
 	    $norun eq 'once' && &setnorun('off'), &win(), return
 		if $norun &&
-		   grep { ! /\b(cmdeval|dotype|setnorun)\b/ } &cmdstrs($cmd);
+		   grep { ! /\b(cmdeval|dotype(in)?|setnorun|domouse)\b/ }
+			&cmdstrs($cmd);
 	return &myeval($cmd)	 unless ref $cmd;
 	return &myeval($$cmd[0]) unless ref $$cmd[0];
-	&myeval(&cmdprompt($txt_cmdprompt || 'Choice:', $cmd));
+	&myeval(&cmdprompt($txt_cmdprompt || 'Choice:', $cmd, $key));
 }
 
-sub keymap {
-	my $_0 = $_[0]; $_0 =~ s/^\*//;		# *map => switch not push
-	my $sw = $&; my $m = '';
-	($_0 ne '' && $_0 eq $keymap[$#keymap] ||
-	 ! defined $_[0]) ? do { pop(@keymap); $m = $keymap[$#keymap] }  :
-	($_0 eq '')	  ? do { @keymap = () }				 :
-	($sw)		  ? do { pop(@keymap); push(@keymap, $m = $_0) } :
-			    push(@keymap, $m = $_0);
-	eval "\$keymap = \\\%keymap_$m";
-	&win_time(), &home() unless $_[1];
-}
-
-sub typemap {
-	my $_0 = $_[0]; $_0 =~ s/^\*//;		# *map => switch not push
-	my $sw = $&; my $m = '';
-	($_0 ne '' && $_0 eq $typemap[$#typemap] ||
-	 ! defined $_[0]) ? do { pop(@typemap); $m = $typemap[$#typemap] } :
-	($_0 eq '')	  ? do { @typemap = () }			   :
-	($sw)		  ? do { pop(@typemap); push(@typemap, $m = $_0) } :
-			    push(@typemap, $m = $_0);
-	eval "\$typemap = \\\%typemap_$m";
+sub keymap   { &pushmap('key',	 @_) }
+sub typemap  { &pushmap('type',	 @_) }
+sub mousemap { &pushmap('mouse', @_) }
+sub pushmap {
+	my $xxx = shift;			# =map => noop if in map
+	my $_0  = $_[0]; $_0 =~ s/^[=!*]*//;	# !map => push regardless
+	my $flg = $&; my $m = '';		# *map => switch not push
+	my $map = eval "\\\@${xxx}map";
+	return if $flg =~ /=/ && $_0 eq $$map[$#$map];
+	($flg =~ /!/)	  ? do { push(@$map, $m = $_0) }	     :
+	($_0 ne '' && $_0 eq $$map[$#$map] ||
+	 ! defined $_[0]) ? do { pop(@$map); $m = $$map[$#$map] }    :
+	($_0 eq '')	  ? do { @$map = () }			     :
+	($flg =~ /\*/)	  ? do { pop(@$map); push(@$map, $m = $_0) } :
+			    push(@$map, $m = $_0);
+	eval "\$${xxx}map  = \\\%${xxx}map_$m";
+	eval "\$a${xxx}map = \\\@${xxx}map_$m" if $xxx eq 'type';
 	&win_time(), &home() unless $_[1];
 }
 
@@ -317,6 +321,46 @@ sub setnorun {
 		 ($_[0] eq 'once')   ? 'once'	:
 		 ($_[0] eq 'on')     ? 1	: 0;
 }
+
+###############################################################################
+## Map management subroutines #################################################
+
+sub mapadd {
+	my($map, $key, $val, $before, $del) = @_;
+	my($hmap, $amap)		    = eval "(\\\%$map, \\\@$map)";
+	delete $$hmap{$key}, @$amap = grep { $_ ne $key } @$amap if $del;
+	return if $del < 0 || exists $$hmap{$key};
+	$$hmap{$key} = $val;
+	return unless @$amap || (keys %$hmap) + 0 == 1;
+	splice(@$amap, &aindex($before, @$amap), 0, $key);
+}
+sub mapdeladd { &mapadd(@_[0 .. 3],  1) }
+sub mapdel    { &mapadd(@_[0 .. 3], -1) }
+
+sub mapget {
+	my($map, $key, $idx) = @_;
+	my($hmap)	     = eval "\\\%$map";
+	return $$hmap{$key}[$idx] if defined $idx;
+	$$hmap{$key};
+}
+
+sub mapset {
+	my($map, $key, $val, $idx) = @_;
+	my($hmap)		   = eval "\\\%$map";
+	return $$hmap{$key}[$idx] = $val if defined $idx;
+	$$hmap{$key} = $val;
+}
+
+sub maporder {
+	my($map)	 = @_;
+	my($hmap, $amap) = eval "(\\\%$map, \\\@$map)";
+	@$amap = sort bykeyorder keys %$hmap unless @$amap;
+	map { ($_, $$hmap{$_}) } @$amap;
+}
+
+sub bykeyorder { ($b eq '') ? -1 : ($a eq '') ? 1 :
+		 (length($a) == 1 && length($b) != 1) ? -1 :
+		 (length($a) != 1 && length($b) == 1) ?  1 : $a cmp $b }
 
 ###############################################################################
 ## Screen drawing subroutines #################################################
@@ -333,7 +377,8 @@ sub win {
 	&filecols(); &longlen();
 	$filecols     = &min($havefilecols, ($long) ? 1 :
 			     ($maxfilecols > 0) ? $maxfilecols : 1024);
-	$longlen      = &min($minlonglen, $scr->{COLS} - $minfilelen - 5);
+	$longlen      = &max(0, &min($minlonglen,
+				     $scr->{COLS} - $minfilelen - 5));
 	$filelen      = int(($scr->{COLS} - (($long) ? $longlen + 1 : 0)) /
 			    ($filecols || 1)) - 4;
 	&page(@_);
@@ -349,24 +394,53 @@ sub win {
 		   ($filecol + 1 == $endc) 		  ? "$endc/$pages" :
 					  ($filecol + 1) . "-$endc/$pages";
 	$scr->clrscr();
-	&win_decor("$user\@$host:", $cwd, $ptxt, 0);
+	&setsm();
+	my @z = &win_decor("$userhost:", $cwd, $ptxt, 0);
+	&setsm(@z[0], $scr->{COLS} - 1 - (4 + $minfilelen), 4 + $minfilelen,
+			     [$$mousemap{'page'},   \$ptxt]) if $ptxt eq '';
+	&setsm(@z[0, 1,  2], [$$mousemap{'user'},   \$userhost]);
+	&setsm(@z[0, 3,  4], [$$mousemap{'dir'},    \$cwd]);
+	&setsm(@z[0, 5,  6], [$$mousemap{'dir...'}, \$cwd]);
+	&setsm(@z[0, 7,  8], [$$mousemap{'dir'},    \$cwd]);
+	&setsm(@z[0, 9, 10], [$$mousemap{'page'},   \$ptxt]);
 	&win_row2();
 
 	%drawn = (); &setcdhist('file0', '');
 	$scr->at(2, 0);
-	foreach $row (0 .. $filerow - 1) {
+	foreach my $row (0 .. $filerow - 1) {
 		my $col = 0; my $file; my $out = '';
 		foreach (@lstable) {
 			last if ($file = $_->[$row]) eq '';
 			$drawn{$file} = [$row, $col];
-			$col += 4 + $filelen;
-			my($s, $l) = &viewfile($file, $filelen);
+			my($s, $sv, $g, $l) = &viewfile($file, $filelen);
 			my $t = ' ' x $filelen;
 			substr($t, 0, $l) = $s;
 			$out .= '   ' . ((! $choose{$file}) ? ' ' :
 					 &color($choose{$file}, $co_decor));
 			$out .= $t;
+
+			&setsm($row + 2, $col,     1,
+			    [$$mousemap{'bag'},     \($_->[$row])]);
+			&setsm($row + 2, $col + 1, 1,
+			    [$$mousemap{'point'},   \($_->[$row])]);
+			&setsm($row + 2, $col + 2, 1,
+			    [$$mousemap{'chose#'},  \($_->[$row]),
+						    $choose{$file}]);
+			&setsm($row + 2, $col + 3, $l,
+			    [$$mousemap{'file'},    \($_->[$row])]);
+			my $p = &ceil(($filelen - length($g) - 3) / 2);
+			&setsm($row + 2, $col + 3 + $p, 3,
+			    [$$mousemap{'file...'}, \($_->[$row])])
+				if $filelen == $l && $sv =~ /^.{$p}\.\.\./;
+			&setsm($row + 2, $col + 2 + $l, 1,
+			    [$$mousemap{'filetag'}, \($_->[$row]), $g])
+				if $g;
+			&setsm($row + 2, $col + 2 + $l - length($g), 1,
+			    [$$mousemap{'file/'},   \($_->[$row])])
+				if $sv =~ /\\$/;
+
 			&setcdhist('file0', $file) if $file0 eq '';
+			$col += 4 + $filelen;
 		}
 		$out =~ s/^ //; $out =~ s/\s*$//;
 		print $out, "\n\r";
@@ -375,11 +449,13 @@ sub win {
 	&win_long() if $long;
 
 	&win_time();
+	&setsm($filerow + 3, undef, undef, [$$mousemap{'home'}]);
 	&win_err();
 }
 
 sub win_err {
 	&home();
+	&setsm() if &msgoverfull($err);
 	$scr->puts(&color($err, $co_error)), $err = '', return if $err ne '';
 	return unless $mail;
 
@@ -392,9 +468,9 @@ sub win_err {
 
 sub win_row2 {
 	$where =~ s/^\s+$//;
-	my @bits = ();
+	my @bits = (); my $bits;
 	push(@bits, "depth=$depth")	 if $depth != 1;
-	push(@bits, "opts=" . &viewas(join('', sort keys %opts)))
+	push(@bits, "opts=" . &viewas(&opts()))
 					 if %opts;
 	push(@bits, "where={$where}")	 if $where =~ /\S/ &&
 		! grep($altls == $_, \@choose, \@cdhist, \@dohist);
@@ -403,34 +479,64 @@ sub win_row2 {
 	push(@bits, "mouse=" . ($moused ? 'on' : 'off'))
 					 if $mouse &&
 					    ($moused xor $initmouse =~ /^on/i);
-	&win_decor('', $lstitle, join(', ', @bits), 1);
+	$bits = join(', ', @bits);
+	my @z = &win_decor('', $lstitle, $bits, 1);
+	&setsm($z[0]);
+	&setsm(@z[0], $scr->{COLS} - 1 - (4 + $minfilelen),
+		      4 + $minfilelen,	  [$$mousemap{'state'},	   \$bits])
+		if $bits    eq '';
+	&setsm(@z[0], 0, 4 + $minfilelen, [$$mousemap{'title'},	   \$lstitle])
+		if $lstitle eq '';
+	&setsm(@z[0, 3,  4],		  [$$mousemap{'title'},	   \$lstitle]);
+	&setsm(@z[0, 5,  6],		  [$$mousemap{'title...'}, \$lstitle]);
+	&setsm(@z[0, 7,  8],		  [$$mousemap{'title'},	   \$lstitle]);
+	&setsm(@z[0, 9, 10],		  [$$mousemap{'state'},	   \$bits]);
 }
 
 sub win_time {
-	my @bits = ();
+	my @bits = (); my $bits;
 	push(@bits, 'run=OFF')			 if $norun;
 	push(@bits, $#choose + 1 . ' chosen')	 if @choose;
 	push(@bits, "keys=$keymap[$#keymap]")    if $keymap[$#keymap]   ne '';
 	push(@bits, "types=$typemap[$#typemap]") if $typemap[$#typemap] ne '';
-	&win_decor('', join(', ', @bits), &myctime($time, &opt('s')),
-		   $filerow + 2, ($long && $filelen + 5 + 57 <= $scr->{COLS})
-				 ? $filelen + 5 + 57 : '');
+	push(@bits, "mouse=$mousemap[$#mousemap]")
+					       if $mousemap[$#mousemap] ne '';
+	$bits = join(', ', @bits);
+	my @z = &win_decor('', $bits, &myctime($time, &opt('s')), $filerow + 2,
+			   ($long && $filelen + 5 + 57 <= $scr->{COLS})
+				   ? $filelen + 5 + 57 : '');
+	&setsm($z[0]);
+	&setsm(@z[0], 0, 4 + $minfilelen, [$$mousemap{'mode'},	  \$bits])
+		if $bits eq '';
+	&setsm(@z[0, 3,  4],		  [$$mousemap{'mode'},	  \$bits]);
+	&setsm(@z[0, 5,  6],		  [$$mousemap{'mode...'}, \$bits]);
+	&setsm(@z[0, 7,  8],		  [$$mousemap{'mode'},	  \$bits]);
+	&setsm(@z[0, 9, 10],		  [$$mousemap{'time'}]);
+	&setsm($z[0], $z[9] + $z[10], 1,  [$$mousemap{'time_'}]);
 }
 
 sub win_decor {
-	my($a, $b, $c, $r, $w) = @_;
+	my($a, $b, $c, $r, $w) = @_; my @b = (); my $s;
 	($a, $b, $c) = (&view($a), &view($b), &view($c));
 	$w = $w || $scr->{COLS};
 	$scr->at($r, 0)->clreol();
 	if ($a ne '' || $b ne '') {
-		my @b = &truncm($b, $w - length($a) - 1 -
-				    (($c ne '') ? length($c) + 1 : 0));
-		$a  = &color("$a$b[0]", $co_decor);
-		$a .= $b[1] . &color($b[2], $co_decor) if $#b > 0;
-		$scr->at($r, 0)->puts($a);
+		@b  = &truncm($b, $w - length($a) - 1 -
+				  (($c ne '') ? length($c) + 1 : 0));
+		$s  = &color("$a$b[0]", $co_decor);
+		$s .= $b[1] . &color($b[2], $co_decor) if $#b > 0;
+		$scr->at($r, 0)->puts($s);
 	}
 	$scr->at($r, $w - length($c) - 1)->puts(&color($c, $co_decor))
 		if $c ne '';
+
+	my @r = ($r); local $i = 0;
+	my $colrange = sub { my $j = $i;
+		($j, do { $i += length($_[0]); length($_[0]) }) };
+	map { push(@r, &$colrange($_)) } $a, @b[0 .. 2];
+	$i = $w - length($c) - 1;
+	push(@r, &$colrange($c));
+	@r;
 }
 
 sub win_bag {
@@ -444,7 +550,7 @@ sub win_bag {
 	&setcdhist('file1', ''); $point = '';
 	&setcdhist('fileptr', $bagkeys[0])
 		unless grep($fileptr eq $_, @bagkeys);
-	map(eval "\$keymap_$_\{'POINT'} = undef", keys %bagmap);
+	map(&mapdel("keymap_$_", 'POINT'), keys %bagmap);
 
 	@usedbagkeys = @bagfiles = ();
 	while (@keys2 && @files2) {
@@ -459,11 +565,15 @@ sub win_bag {
 		($key, $file) = (shift @keys, shift @files);
 
 		($_[1]) ? $key eq $fileptr &&
-			  $scr->at(2 + $x + $row, $y + 1)
-			      ->puts($_[0] ? '>' : ' ')
-			: $scr->at(2 + $x + $row, $y)
-			      ->puts(($_[0] ? &color($key, $co_decor) : ' ')
-				   . ($_[0] && $key eq $fileptr ? '>' : ' '));
+			  ($scr->at(2 + $x + $row, $y + 1)
+			       ->puts($_[0] ? '>' : ' '),
+			   &setsmarg(2 + $x + $row, $y, 2, 3, $_[0]))
+			: ($scr->at(2 + $x + $row, $y)
+			       ->puts(($_[0] ? &color($key, $co_decor) : ' ')
+				    . ($_[0] && $key eq $fileptr ? '>' : ' ')),
+			   &setsmarg(2 + $x + $row, $y, 2,
+				     2, $_[0] ? $key : '',
+					$_[0] && $key eq $fileptr));
 		$row++;
 
 		($qfile, $qkey) = (&evalquote($file), &evalquote($key));
@@ -475,10 +585,9 @@ sub win_bag {
 			$act = (! ref $act)	? [&$fill($act), ''] :
 			       (! ref $$act[0]) ? [&$fill(@$act)]    :
 					[map { [&$fill(@$_)] } @$act];
-			eval "\$keymap_$_\{\$key} = " .
-				($_[0] ? '$act' : 'undef');
-			eval "\$keymap_$_\{'POINT'} = \$keymap_$_\{\$key}"
+			&mapdeladd("keymap_$_", 'POINT', $_[0] ? $act : undef)
 				if $key eq $fileptr;
+			&mapdeladd("keymap_$_", $key,    $_[0] ? $act : undef);
 		}
 		$point = $file if $key eq $fileptr && $_[0];
 		&setcdhist('file1', $file) if $file1 eq '';
@@ -486,33 +595,42 @@ sub win_bag {
 	&setcdhist('file1', $point) if $point ne '';
 
 	foreach $key (@keys) {
-		map(eval "\$keymap_$_\{\$key} = undef", keys %bagmap);
+		map { &mapdeladd("keymap_$_", $key, undef) } keys %bagmap;
 	}
 }
 
 sub win_choose {
 	my($x, $y);
 	foreach (@_) {
-		($x, $y) = @{$drawn{$_}},
-		    $scr->at($x + 2, $y + 2)
-			->puts(($choose{$_} eq '') ? ' ' :
-			       &color($choose{$_}, $co_decor)) if $drawn{$_};
+		next unless $drawn{$_};
+		($x, $y) = @{$drawn{$_}};
+		$scr->at($x + 2, $y + 2)->puts(($choose{$_} eq '') ? ' ' :
+					       &color($choose{$_}, $co_decor));
+		&setsmarg($x + 2, $y + 2, 1, 2, $choose{$_});
 	}
 	&win_time();
 }
 
 sub win_long {
-	my $row = 2;
+	my($row, $zone, $i) = (2, 'long', 0);
 	&win_row2() if shift;
 	if ($long =~ /(^\d+$|\$_\b)/) {
+		$zone = 'longls' if $long =~ /^\d+$/;
 		foreach (@{$lstable[0]}) {
-			$scr->at($row++, $filelen + 4)->clreol()
-			    ->puts(&long($longlen, $_));
+			my($l) = &long($longlen, $_);
+			my($s) = &decolor($l);
+			&setsm($row, $filelen + 4);
+			&setsm($row, $filelen + 4, length($s),
+			       [$$mousemap{$zone}, \$_, \$s]);
+			$scr->at($row++, $filelen + 4)->clreol()->puts($l);
 		}
 	} else {
 		foreach (&long($longlen, @{$lstable[0]})) {
-			$scr->at($row++, $filelen + 4)->clreol()
-			    ->puts($_);
+			my($s) = &decolor($_);
+			&setsm($row, $filelen + 4);
+			&setsm($row, $filelen + 4, length($s),
+			      [$$mousemap{$zone}, \${$lstable[0]}[$i++], \$s]);
+			$scr->at($row++, $filelen + 4)->clreol()->puts($_);
 		}
 	}
 }
@@ -524,7 +642,15 @@ sub home {
 
 sub msg {
 	&home();
-	$scr->puts(&color(join(' ', @_), $co_msg));
+	&setsm() if &msgoverfull(@_);
+	$scr->puts(&color(join(' ', @_), $co_msg))->clreol();
+}
+
+sub msgoverfull {	# heuristic, tries to err conservatively
+	local $_ = join(' ', @_);
+	s/\t/' ' x 8/egs;
+	s/\n/' ' x $scr->{COLS}/egs;
+	length >= ($scr->{ROWS} - ($filerow + 3)) * $scr->{COLS};
 }
 
 sub viewfile {
@@ -533,12 +659,34 @@ sub viewfile {
 	$tag = &tag($file) if &opt('T');
 	$n-- if $tag;
 	$f =  &view($file);
-        $f =~ s/[\040\240]+$/join('', map { sprintf('\\%03o', ord($_)) }
+	$f =~ s/[\040\240]+$/join('', map { sprintf('\\%03o', ord($_)) }
 					  split(\/\/, $&))/e;
 	$f =  ($f =~ /\//) ? join('', @f = &truncm($f, $n)) : &trunc($f, $n)
 		if length($f) > $n;
 	((&opt('C') ? &colorfile($file, $f, @f) : $f) . $tag,
-	 length($f . $tag));
+	 $f, $tag, length($f . $tag));
+}
+
+sub setsm {
+	undef %screenmap, return unless @_;
+	return unless $mouse && $moused;
+	my($row, $col, $n, $val) = @_;
+	$col = 0		   unless defined $col;
+	$n   = $scr->{COLS} - $col unless defined $n;
+	return if $val && ! $$val[0];
+	foreach ($col .. $col + $n - 1) {
+		delete $screenmap{join(',', $_ + 0, $row + 0)}, next
+			unless defined $val;
+		$screenmap{join(',', $_ + 0, $row + 0)} = $val;
+	}
+}
+
+sub setsmarg {
+	return unless $mouse && $moused;
+	my($row, $col, $n, $i, @v) = @_;
+	foreach ($col .. $col + $n - 1) {	# couldn't get splice() to work
+		@{$screenmap{join(',', $_ + 0, $row + 0)}}[$i .. $i+$#v] = @v;
+	}
 }
 
 sub scrtruncr {
@@ -672,14 +820,19 @@ sub fileptr {
 
 sub longlen {
 	local $_ = shift;
-	$_ = ($minlonglen <= 57) ? 'max' : 'min' if /^t/i;
+	my($min, $max) = (57, $scr->{COLS} - $minfilelen - 5);
+	$_ = ($minlonglen <= $min) ? 'max' : 'min' if /^t/i;
 	$minlonglen =
-	    (/^$/)    ? $minlonglen		       :
-	    (s/^\+//) ? $minlonglen + $_	       :
-	    (s/^\-//) ? $minlonglen - $_	       :
-	    (/^max/i) ? $scr->{COLS} - $minfilelen - 5 :
-	    (/^min/i) ? 57			       :
-	    (/^\d/)   ? $_			       : 57;
+	    (/^$/)	 ? $minlonglen	    :
+	    (/^\+(.*)%/) ? $minlonglen + int(($max - $min) * $1 / 100 + .5) :
+	    (/^\-(.*)%/) ? $minlonglen - int(($max - $min) * $1 / 100 + .5) :
+	    (s/^\+//)	 ? $minlonglen + $_ :
+	    (s/^\-//)	 ? $minlonglen - $_ :
+	    (/^max/i)	 ? $max		    :
+	    (/^min/i)	 ? $min		    :
+	    (/^\d/)	 ? $_ + 0	    : $min;
+	$minlonglen = ($minlonglen < $min) ? $max :
+		      ($minlonglen > $max) ? $min : $minlonglen if /r$/i;
 	$minlonglen = &max(0, $minlonglen);
 }
 
@@ -704,6 +857,12 @@ sub color {
 	($_[1] eq 'bold')    ? $bold    . $_[0] . $normal :
 	($_[1] eq 'reverse') ? $reverse . $_[0] . $normal :
 	($_[1] eq '')	     ?		  $_[0]		  : &colored(@_);
+}
+
+sub decolor {	# vs Term::ANSIColor's "uncolor"
+	my @r = @_;
+	foreach (@r) { s/\e\[[^m]*m//gs }
+	$#r ? @r : shift @r;
 }
 
 # We assume the visible segment of the given colored text does not also
@@ -878,26 +1037,42 @@ sub histpaths {
 		    (map { /\/*[^\/]*\/*$/; $` || '/' } @dohist));
 }
 
+sub dotypein { &typemap('!' . shift); &dotype(@_); &typemap(); }
 sub dotype {
-	local  $_  = shift;	# ala csh's variable modifiers ($var:m)
-	(local $_r = $_) =~ s/\.([^.]*)$//; local $_e = $1;
-	local($_h, $_t);
-	(/\//) ? (($_h = $_) =~ s/\/([^\/]*)$//, $_t = $1) :
-		 ( $_h = '',			 $_t = $_);
-	local $_f  = &absfile($_);
-	local $_m  = &mimetype($_);
-	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq, $_mq) =
-		map { &quote($_) } ($_, $_r, $_e, $_h, $_t, $_f, $_m);
-	local $_d  = ($_ eq '') ? '' : `file -L $_q`; chomp $_d;
-	local $_dq = &quote($_d);
+	local $_ = @_ ? shift : $_;
+	local(	   $_r,  $_e,  $_h,  $_t,  $_f,  $_m,  $_d );
+	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq, $_mq, $_dq);
+	&set_x();
 
 	@dohist = ($_f, grep($_ ne $_f, @dohist)) unless -d;
 	my $max = eval $maxdohist;
 	splice(@dohist, $max) if $max >= 0;
-	foreach $test (sort keys %$typemap) {
-		return &cmdeval($$typemap{$test}) if $test && eval $test;
+	foreach my $test (@$atypemap ? @$atypemap : sort keys %$typemap) {
+		return &cmdeval($$typemap{$test})
+			if $test && eval &ext_syntax($test);
 	}
 	&cmdeval($$typemap{''});
+}
+
+sub set_x {	# ala csh's variable modifiers ($var:m)
+	($_r = $_) =~ s/\.([^.]*)$//; $_e = $1;
+	(/\//) ? (($_h = $_) =~ s/\/([^\/]*)$//, $_t = $1) :
+		 ( $_h = '',			 $_t = $_);
+	$_f  = &absfile($_);
+	$_m  = &mimetype($_);
+	($_q, $_rq, $_eq, $_hq, $_tq, $_fq, $_mq) =
+		map { &quote($_) } ($_, $_r, $_e, $_h, $_t, $_f, $_m);
+	$_d  = ($_ eq '') ? '' : `file -L $_q 2> /dev/null`; chomp $_d;
+	$_dq = &quote($_d);
+}
+
+sub ext { my $patt = join('|', @_); /\.($patt)$/i }
+sub Ext { my $patt = join('|', @_); /\.($patt)$/  }
+
+sub ext_syntax {
+	local $_ = join(' ', @_);
+	s/^([eE]xt) ([^\cA]*)$/$1 qw\cA$2\cA/ if ! /^[eE]xt\s+(['"]|qw\b)/;
+	$_;
 }
 
 sub choose {
@@ -953,7 +1128,8 @@ sub untilde {
 	$_;
 }
 
-sub absfile {
+sub atabsfile { "$userhostr:" . &absfile(@_) }
+sub   absfile {
 	my($f, $d) = @_;
 	return $f if $f =~ /^\//;
 	$d = $cwd if $d eq '';
@@ -998,7 +1174,7 @@ sub cdpath {
 	return &cd($_[0]) if /^(\/|$)/;
 
 	my $pre = $err;
-	foreach $dir ('', split(':', $ENV{'CD_PATH'})) {
+	foreach my $dir ('', split(':', $ENV{'CD_PATH'})) {
 		$err = $pre, return $cwd if &cd(((/./) ? "$dir/" : '') . $_);
 	}
 	$err = $pre; &err("Cannot cd $_ in CD_PATH");
@@ -1078,7 +1254,7 @@ sub setmark {
 }
 
 sub getmark {
-	my $mark = exists $mark{$_[0]} ? $mark{$_[0]} : return undef;
+	my $mark = exists $mark{$_[0]} ? $mark{$_[0]} : return;
 	return $mark->{'ls'}				  if $_[1] =~ /^d/i;
 	return $mark->{'file1'}				  if $_[1] =~ /^f/i;
 	return join('/', $mark->{'ls'}, $mark->{'file1'}) if $_[1] =~ /^p/i;
@@ -1089,8 +1265,8 @@ sub clearmarks { %mark = () }
 
 sub helpmarks {
 	return &pipeto(shift, "No marks are defined.\n") unless %mark;
-	&help(shift,
-	      map { ($_, "$mark{$_}->{ls} @ $mark{$_}->{file1}") } keys %mark);
+	&help(map { ($_, "$mark{$_}->{ls} @ $mark{$_}->{file1}") }
+		  sort keys %mark);
 }
 
 ###############################################################################
@@ -1125,8 +1301,7 @@ sub ls {
 	@ls = grep(! /(^|\/)\.[^\/]*$/, @ls) if &opt('a');
 	@ls = grep(! /(^|\/)\.\.?$/,    @ls) if &opt('A');
 	if (&opt('B')) {
-		my $bak;
-		foreach $bak (@bak) {
+		foreach my $bak (@bak) {
 			eval { @ls = grep(! /$bak/, @ls) };
 			&err($@) if $@;
 		}
@@ -1315,6 +1490,7 @@ sub txt2secs {
 ## Options subroutines ########################################################
 
 sub initopts { %opts = () }
+sub opts     { join('', sort keys %opts) }
 
 sub setopt {
 	my($opt, $val) = @_;		# set opt to bool val, toggle if no val
@@ -1423,7 +1599,8 @@ sub expanddir {
 	my $act = shift;
 	$act = ($act =~ /^e/i) ? 1 : ($act =~ /^c/i) ? -1 : 0;
 	foreach (@_) {
-		my $def = exists $cdhist[0]{'expand'}{$_} unless $act;
+		my $def = undef;
+		$def = exists $cdhist[0]{'expand'}{$_} unless $act;
 		map($cdhist[0]{'expand'}{$_} = 1, &subdirs($_, $depth)), next
 			if ($act > 0 || ! $act && ! $def) && -d $_;
 		map(delete $cdhist[0]{'expand'}{$_}, &expdirs($_, $depth))
@@ -1485,20 +1662,91 @@ sub mousemode {				# See also xterm doc ctlseqs.*
 # being executed.  Don't know where the cause is, but it doesn't appear
 # to ever happen on fast computers with a locally running new xterm.
 
+# Since Button 1-3 up events don't identify their Button, we track the
+# last Button 1-3 down event and assume a Button 1-3 up event was on that
+# last Button, even though it may not be so if Button 1-3 up/down events
+# are interleaved.  Then the stray Button up events are beeped and ignored.
+
 sub domouse {
-	my $dir = 2;
-	my $ch  = ord($scr->getch());
- 	my $btn = ($ch		    & 0103) + 1;
-	my $col = ord($scr->getch()) - 040  - 1;
-	my $row = ord($scr->getch()) - 040  - 1;
-	my($s, $c, $m) = ($ch & 04, $ch & 020, $ch & 010);
-	$dir = 1,	  $btn = 0 if $btn == 4;
-	$dir = $btn - 64, $btn = 4 if $btn >= 65;
-	&msg(($m ? 'Mod1-' : '') .
-	     ($c ? 'Ctrl-' : '') .
-	     ($s ? 'Shft-' : '') . join(' ', grep(/./,
-		  ($btn == 4) ? 'Wheel' : ('Button', $btn || ''),
-		  ($dir == 1) ? 'up' : 'down', "at ($col, $row)")));
+	my    $ch  = ord($scr->getch());
+ 	local $btn = ($ch	       & 0103) + 1;
+	local $bup = 2;
+	local $col = ord($scr->getch()) - 040  - 1;
+	local $row = ord($scr->getch()) - 040  - 1;
+	local($s, $c, $m) = (($ch &  04) ? 's' : '',
+			     ($ch & 020) ? 'c' : '',
+			     ($ch & 010) ? 'm' : '');
+	$bup = 1,	  $btn = $Button if $btn == 4;
+	$bup = $btn - 64, $btn = 4	 if $btn >= 65;
+	$bup = ($bup == 1) ? 'u' : '';
+
+	&beep(), return if $bup && ! $btn;
+
+	local($_,  $_r,  $_e,  $_h,  $_t,  $_f,  $_m,  $_d,  @_argv);
+	local($_q, $_rq, $_eq, $_hq, $_tq, $_fq, $_mq, $_dq);
+	my $cell = $screenmap{"$col,$row"};
+	my $cmd  = $cell ? $$cell[0] : undef;
+	$ch	 = &mev2c();
+	if ($cell && (! ref $cmd || ! ref $$cmd[0] ||
+		      &cmdprompt('', $cmd, $ch))) {
+		@_argv = @$cell;
+		$_     = $_argv[1];
+		$_     = $$_ if ref eq 'SCALAR';
+		&set_x() unless ref;
+		&cmdeval(shift @_argv,   $ch);
+	} else {
+		&cmdeval($$mousemap{''}, $ch);
+	}
+
+	($Button, $Brow, $Bcol) = ($btn >= 1 && $btn <= 3 && ! $bup) ?
+		($btn, $row, $col) : (undef) x 3;
+}
+
+sub mousetxt {
+	($m ? 'Mod1-' : '') . ($c ? 'Ctrl-' : '') . ($s ? 'Shft-' : '') .
+	join(' ', grep(/./, ($btn == 4) ? 'Wheel' : ('Button', $btn || ''),
+			    ($bup) ? 'up' : 'down', "at ($col, $row)", @_));
+}
+
+sub mev {
+	join(' ', grep(/./, "$m$c$s" . (($btn == 0 && $bup) ? $bup	 :
+					($btn != 4 && $bup) ? "$btn$bup" :
+					($btn != 4)	    ? "${btn}d"  :
+					($bup) ? "W$bup" : 'Wd'), @_));
+}
+
+sub mev2c {
+	my $r = '';
+	foreach my $mev (@_ ? @_ : &mev()) {
+		local $_ = $mev;
+		s/W/4/gi;
+		$r .= chr((/m/i ? 32 : 0) +
+			  (/c/i ? 16 : 0) +
+			  (/s/i ?  8 : 0) +
+			  (/4/  ?  6 : /3/ ? 4 : /2/ ? 2 : 0) +
+			  (/u/i ?  1 : 0) + 59);	# ';' .. 'z'
+	}
+	$r;
+}
+
+sub c12mev { &c2mev(substr(join('', @_), 0, 1)) }
+sub c2mev  {
+	my $c, $mev, @r = ();
+	foreach (split(//, join('', @_))) {
+		$c = ord($_);
+		$mev  = '',  $c -= 59;
+		$mev .= 'm', $c -= 32 if $c >= 32;
+		$mev .= 'c', $c -= 16 if $c >= 16;
+		$mev .= 's', $c -=  8 if $c >=  8;
+		$mev .= 'W', $c -=  6 if $c >=  6;
+		$mev .= '3', $c -=  4 if $c >=  4;
+		$mev .= '2', $c -=  2 if $c >=  2;
+		$mev .= '1'	      if $mev !~ /[W32]/i;
+		$mev .= 'u'	      if $c >=  1;
+		$mev .= 'd'	      if $c <   1;
+		push(@r, $mev);
+	}
+	$#r ? $r[0] : @r;	# sic
 }
 
 ###############################################################################
@@ -1506,20 +1754,23 @@ sub domouse {
 
 sub help {	# -u* = list unused keys, -U* = list unused key ranges
 	my $unused = 0; $unused = shift if $_[0] =~ /^-u/i;
-	my $pager  = shift; my $tab = 8;
-	my($key, $val, @kmap, @tmap);
-	my %list = (); my @list = (); my %uplist = ();
+	my $tab = 8; my($key, $val); my $fnc = undef;
+	my %list = (); my @list = (); my @out = (); my %uplist = ();
 
-	eval "\@kmap = \%keymap_$keymap[$#keymap]";
-	eval "\@tmap = \%typemap_$typemap[$#typemap]";
-	push(@_, @kmap) unless @_;
+	@_ = ('=keymap') unless @_;
 	while (@_) {
 		$key = shift;
-		unshift(@_, @kmap), next if $key eq '%keymap';
-		unshift(@_, @tmap), $tab = $typemaptab, next
-					 if $key eq '%typemap';
+		unshift(@_, &maporder("keymap_$keymap[$#keymap]")),
+					    next if $key eq '=keymap';
+		unshift(@_, &maporder("typemap_$typemap[$#typemap]")),
+			$tab = $typemaptab, next if $key eq '=typemap';
+		unshift(@_, &maporder("mousemap_$mousemap[$#mousemap]")),
+			$tab = $mousemaptab,
+			$fnc = \&c12mev,    next if $key eq '=mousemap';
+		unshift(@_, &maporder($1)), next if $key =~ /^=(\w+)$/;
 		$val = shift;
-		$list{$key} = $val unless exists $list{$key};
+		$list{$key} = $val, push(@list, $key)
+			unless exists $list{$key};
 
 		if ($key eq '' &&	# kludge, non-recursive
 		    $$val[0] =~ /^\W*cmdeval\W+keymapcmd\W+(\w*)\W*$/) {
@@ -1527,8 +1778,8 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 		}
 	}
 
-	foreach (sort bykeyorder keys %list) {
-		push(@list, &helpstr($_, '', $tab, $list{$_})) }
+	foreach (@list) {
+		push(@out, &helpstr($_, '', $tab, $list{$_}, $fnc)) }
 
 	if ($unused) {
 		my @seq = grep(! exists   $list{pack('c', $_)} &&
@@ -1539,25 +1790,24 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 			$_ = &viewas(pack('c', $$_[0])) . '-' .
 			     &viewas(pack('c', $$_[1]));
 		}
-		push(@list, &color('UNUSED  ' . join(' ', @seq), $co_xuse));
+		push(@out, &color('UNUSED  ' . join(' ', @seq), $co_xuse));
 	}
 
-	&pipeto($pager, @list);
+	&pipeto($pagerr, @out);
 }
 
-sub bykeyorder { ($b eq '') ? -1 : ($a eq '') ? 1 :
-		 (length($a) == 1 && length($b) != 1) ? -1 :
-		 (length($a) != 1 && length($b) == 1) ?  1 : $a cmp $b }
-
 sub helpstr {
-	my($key, $prk, $tab, $cmd) = @_; my($v1, $v2) = (0, 0);
+	my($key, $prk, $tab, $cmd, $fnc, $chc) = @_; my($v1, $v2) = (0, 0);
 	return () if $cmd eq '';
 
+	$fnc = sub { @_ } unless ref $fnc;
 	$cmd = (! ref $cmd) ? $cmd : (! ref $$cmd[0])
 	       ? (($$cmd[1] ne '' && ! &opt('p'))
 		  ? "\\" . eval("qq^$$cmd[1]^") : $$cmd[0])
-	       : return map(&helpstr($key, substr($$_[2], 0, 1), $tab, $_),
-			    &cmds($cmd));
+	       : return map(&helpstr($key, &$fnc(substr($$_[2], 0, 1)),
+				     $tab, $_),
+			    grep((defined $chc) ? substr($$_[2], 0, 1) eq $chc
+						: 1, &cmds($cmd)));
 
 	$key = (length($key) == 1) ? &colorkey($v1 = &viewas($key)) :
 			&color($v1 = &view('no-double-backslash', $key),
@@ -1574,7 +1824,17 @@ sub helpstr {
 }
 
 sub cmdprompt {
-	my($get, $cmd) = @_; my @p = (); my($v, $c, $n);
+	my($get, $cmd, $c) = @_; my $cm;
+	$c  = &keyprompt(@_) unless $c;
+	$cm = ($c eq '') ? '' : (grep { index($$_[2], $c) >= $[ } @$cmd)[0];
+	$cm = 			(grep {       $$_[2]      eq '' } @$cmd)[0]
+		unless $c eq '' || $c eq "\r" || ref $cm;
+	$c ne "\r" && ! defined $_[2] && &beep(), return '' unless ref $cm;
+	$$cm[0];
+}
+
+sub keyprompt {
+	my($get, $cmd) = @_; my @p = (); my($v, $n, $c);
 	foreach (&cmds($cmd)) {
 		$n++;
 		push(@p, &colorkey($v = &viewas(substr($$_[2], 0, 1))),
@@ -1586,18 +1846,16 @@ sub cmdprompt {
 				&colorcmd(&view($$_[0])), "\n");
 	}
 	&home(); &echo(@p);
-	$c   = &getkey($get);
+	$c = &getkey($get);
 	($filerow + 3 + $n + 1 > $scr->{ROWS}) ?
 		&winch() : do { &home(); $scr->clreos() };
-	$cmd = ($c eq '') ? '' : (grep { index($$_[2], $c) >= $[ } @$cmd)[0];
-	$c ne "\r" && &beep(), return '' unless ref $cmd;
-	$$cmd[0];
+	$c;
 }
 
 sub cmds {	# limited to 26 default keys (a-z), not guaranteed unique
 	my $a = 'a';
-	foreach $cmd (@{$_[0]}) {
-		next if $$cmd[2] ne '';
+	foreach my $cmd (@{$_[0]}) {
+		next if defined $$cmd[2];
 		$$cmd[2] = $a++;
 		last if length($a) > 1;
 	}
@@ -1714,6 +1972,56 @@ sub beep {
 	print $vibeep if &opt('v');
 }
 
+sub run {
+	my @args = @_;
+	my $opts = undef; $opts = $', shift @args if $args[0] =~ /^-/;
+	my $marg = $opts =~ /[xs]/ && $#args > 0;
+
+	($opts =~ /#/) ? (($marg) ? push(@args, '--', @choose)
+				  : ($args[$#args] .=
+					join(' ', ' --', &quote(@choose)))) :
+	($opts =~/\+/) ? (($marg) ? push(@args, @choose)
+				  : ($args[$#args] .=
+					join(' ', '',    &quote(@choose)))) :
+	($opts =~ /=/) ? (($marg) ? push(@args, '--', $_)
+				  : ($args[$#args] .= " -- $_q")) :
+	($opts =~ /_/) ? (($marg) ? push(@args, $_)
+				  : ($args[$#args] .= " $_q"))    : undef;
+
+	@args = join(' ', ($marg) ? &quote(@args) : @args)
+		if $opts =~ /[gPpb]/;
+	($opts =~ /g/) ? ($args[0] .= " | $pagerr") :
+	($opts =~ /P/) ? ($args[0] .= " | $pagera") :
+	($opts =~ /p/) ? ($args[0] .= " | $pager")  : undef;
+	($opts =~ /b/) ? ($args[0]  = "($args[0]; echo \a\a |"
+				    . " tr -d '\\012') &")     : undef;
+
+	($opts =~ /x/) ? &xsh(@args)    :
+	($opts =~ /s/) ? &sh(@args)     :
+	($opts =~ /X/) ? &xshell(@args) :
+			 &shell(@args);
+	($opts =~ /b/) ? sleep 1 : undef;
+
+	($opts =~/\//) ? &setcomplete() : undef;
+	($opts =~ /C/) ? &ret('Remove?') && &remove(@choose) :
+	($opts =~ /R/) ? &ret('Remove?') && &remove($_)	     :
+	($opts =~ /r/) ? &ret()				     : undef;
+	($opts =~ /u/) ? &unchoose(@choose) : undef;
+	($opts =~ /k/) ? &keymap() : undef;
+
+	($opts =~ /n/) ? undef    :
+	($opts =~ /W/) ? &winch() :
+	($opts =~ /w/) ? &win()   :
+			 ($opts =~ /x/ || $opts =~ /X/ && $opts !~ /s/)
+				? &win() : &winch();
+}
+
+sub run_syntax {
+	local $_ = join(' ', @_);
+	s/^run (-\S*) /run '$1', /;
+	$_;
+}
+
 ###############################################################################
 ## Perl environment subroutines ###############################################
 
@@ -1770,21 +2078,21 @@ sub capcmd2cmd {
 				   $cap->field($type, 'shortview');
 	$scmd = $cmd unless $scmd;
 	local $_ = &evalquote($cmd);
-	$_ .= ' . " < $_q"'	     unless /\%s/; 
-	$_ .= ' . " | $cfg::pagera"' if $cap->field($type, 'copiousoutput')
-				     && $key ne 'e' && $key ne 'p';
+	$_ .= ' . " < $_q"'	unless /\%s/; 
+	$_ .= ' . " | $pagera"' if $cap->field($type, 'copiousoutput')
+				&& $key ne 'e' && $key ne 'p';
 	s/\%s'$/' . \$_q/s;
 	s/\%s/' . \$_q . '/gs;
-	return ["xsh $_; win",
+	return ["run -x $_",
 		"$verb this file", $key . uc $key,
 		"$verb with `$scmd`"]
 			if $cap->field($type, 'dontneedterminal')
 			&& $key ne 'e' && $key ne 'p';
-	(["sh $_; winch",
+	(["run -s $_",
 	  "$verb this file from this terminal",     $key,
 	  "$verb from this term with `$scmd`"],
-	 ["xsh \"xterm -e '\" . " . do { s/\\'/\\'"\\'"\\'/gs; $_ }
-				  . " . \"'\"; win",
+	 ["run -x \"xterm -e '\" . " . do { s/\\'/\\'"\\'"\\'/gs; $_ }
+				     . " . \"'\"",
 	  "$verb this file from a new terminal", uc $key,
 	  "$verb from new term with `$scmd`"]);
 }
@@ -1833,21 +2141,24 @@ sub diskdevs {
 sub diskspace {
 	my @args = @_ ? @_ : (&pwd());	# &df trashes @_
 	return () unless &df();
-	my @r    = ();
-	my %mag  = (1 => 'K', 2 => 'M', 3 => 'G', 4 => 'T');
+	my @r	 = ();
+	my %mag	 = (1 => 'K', 2 => 'M', 3 => 'G', 4 => 'T');
+	my $cmnt = $df->mount(&pwd());
 	foreach (@args) {
-		my($u, $a)     = ($df->used($_), $df->avail($_));
+		my($u, $a)     = ($df->used($_),  $df->avail($_));
 		my($t, $f, $s) = ($u + $a, 1, ' ');
+		my $mnt	       = $df->mount($_);
 		foreach (reverse sort keys %mag) {
 			($f, $s) = (1024 ** $_, $mag{$_}), last
 				if $t > 1024 ** ($_ + 1);
 		}
 		push(@r, join(' ',
-			sprintf("%6.0f$s",	      $u / $f),	    '/'	    .
-			sprintf("%6.0f$s",	      $t / $f),	    '='	    .
-			sprintf('%5.1f%%', $t ? 100 * $u / $t : 0), 'used,' .
+			sprintf("%6.0f$s",	      $u / $f),	    '/'	   .
+			sprintf("%6.0f$s",	      $t / $f),	    '='	   .
+			sprintf('%5.1f%%', $t ? 100 * $u / $t : 0), 'used' .
+			(($mnt eq $cmnt) ? ';' : ',')			   .
 			sprintf("%6.0f$s",	      $a / $f),	    'avail',
-			$df->device($_), $df->mount($_)));
+			$df->device($_), $mnt));
 	}
 	$#r ? @r : shift @r;
 }
@@ -1879,11 +2190,11 @@ sub colordiskspace {
 # coordination between vshnu and its invoking shell when suspending from
 # a subprocess.
 
-sub sigs_off  { @SIG{qw/INT WINCH/} = qw/DEFAULT DEFAULT/;
+sub sigs_off  { @SIG{qw/INT PIPE WINCH/} = qw/DEFAULT IGNORE DEFAULT/;
 		$SIG{'TSTP'}	    = ($Config{'PERL_REVISION'} >  5 ||
 				       $Config{'PERL_VERSION'}  >= 8)
 						? 'DEFAULT' : 'tstp' }
-sub sigs_on   { @SIG{qw/INT WINCH TSTP/} = qw/IGNORE winch stop/ }
+sub sigs_on   { @SIG{qw/INT PIPE WINCH TSTP/} = qw/IGNORE DEFAULT winch stop/ }
 sub winch_off { $SIG{'WINCH'} = 'DEFAULT' }
 sub winch_on  { $SIG{'WINCH'} = 'winch'   }
 
@@ -1915,10 +2226,12 @@ sub winch {
 }
 
 sub getkey {
+	&mousemode(0);
 	$scr->puts(join(' ', map(&color($_, $co_decor), @_)) . ' ')
 	    ->clreol() if @_;
 	my $ch = $scr->getch();
 	$scr->flush_input();	# partly broken in Term::Screen 1.00- *shrug*
+	&mousemode();
 	$ch . '';
 }
 
@@ -1997,7 +2310,7 @@ sub pipeto {
 	&sigs_off() if $prog;
 	open(PIPE, $prog) ? do { print PIPE @_; close PIPE }
 			  : &err("Cannot open '$prog' ($!)");
-	&sigs_on() if $prog;
+	&sigs_on()  if $prog;
 	&bakescr($cooked = 0);
 }
 
@@ -2076,7 +2389,9 @@ sub wtmpcwd {
 ## Wrapper subroutines ########################################################
 
 sub myeval {
-	my @r = eval join(' ', @_);
+	my $cmd = &run_syntax(@_);
+	@_	= @_argv;
+	my @r	= eval $cmd;
 	&err($@) if $@;
 	@r;
 }
@@ -2088,7 +2403,7 @@ sub myctime {		# Internet (Swatch) Time
 
 sub xsh {
 	&err('DISPLAY not defined'), return unless $ENV{'DISPLAY'};
-	&sh(join(' ', @_, '&'));
+	&sh(join(' ', ($#_ > 0) ? &quote(@_) : @_, '&'));
 }
 
 sub xshell {
@@ -2165,25 +2480,26 @@ sub expandtabs {
 }
 
 sub view {
-	my $ndbs = shift if $_[0] eq 'no-double-backslash' && $#_;
-        local $_ = join('', @_);
+	my $ndbs = undef;
+	$ndbs = shift if $_[0] eq 'no-double-backslash' && $#_;
+	local $_ = join('', @_);
 	s/\\/\\\\/g unless $ndbs;
-        s/\n/\\n/g;
-        s/[\000-\007\013\016-\037\177-\237]/sprintf('\\%03o', ord($&))/eg;
-        s/\010/\\b/g;	s/\f/\\f/g;
-        s/\r/\\r/g;	s/\t/\\t/g;
-        $_;
+	s/\n/\\n/g;
+	s/[\000-\007\013\016-\037\177-\237]/sprintf('\\%03o', ord($&))/eg;
+	s/\010/\\b/g;	s/\f/\\f/g;
+	s/\r/\\r/g;	s/\t/\\t/g;
+	$_;
 }
 
 sub viewas {
-        local $_ = join('', @_);
-        s/\n/^J/g;
-        s/[\000-\037]/'^' . pack('c', ord($&) + 64)/eg;
+	local $_ = join('', @_);
+	s/\n/^J/g;
+	s/[\000-\037]/'^' . pack('c', ord($&) + 64)/eg;
 	s/ /<sp>/g;
 	s/\177/<del>/g;
-        s/[\200-\237]/sprintf('\\%03o', ord($&))/eg;
+	s/[\200-\237]/sprintf('\\%03o', ord($&))/eg;
 	s/\240/<nbsp>/g;
-        $_;
+	$_;
 }
 
 ###############################################################################

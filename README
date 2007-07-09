@@ -91,12 +91,14 @@ o Separate per-site and per-user configurability
 * Perl statements may be {{embedded}} within shell commands
 * A Perl "where" clause to subset the displayed files
 
+o Many actions available via the mouse in terminals with xterm(1)-like
+  mouse support
 o Can use mailcap(4) files for specifying file actions by MIME type
 o Can use the CD_PATH environment variable as a search path for files
   and directories
 o Recognizes the following standard environment variables:
   ANSI_COLORS_DISABLED, DISPLAY, EDITOR, HOME, HOST, LS_COLORS, MAIL,
-  MAILCAPS, PAGER, PATH, PERL_RL, SHELL, TERM and VISUAL
+  MAILCAPS, MAILER, PAGER, PATH, PERL_RL, SHELL, TERM and VISUAL
 
 ------------------------------  HISTORY  -------------------------------
 
@@ -155,6 +157,9 @@ Hindu god Vishnu, the preserver of the universe and restorer of dharma
     vshnu to determine how files should be colored by type and name.
     As an example, the file color specification file I use is available
     at <http://www.cs.indiana.edu/~kinzler/home.html#etc/colorrc-ansi>.
+
+    A terminal with xterm(1)-like mouse support will enable the use of
+    vshnu's mouse functionality.
 
     The `xcb` utility will be required for the interfaces to the X11
     cut buffer to work <http://www.goof.com/pcg/marc/xcb.html>.
@@ -254,11 +259,20 @@ with the supplied configuration:
     'V' will suspend vshnu, dropping you back into the invoking shell.
     <Control-Q>q (or <Control-Z>q) will exit vshnu.
 
+    With the mouse, you can left-click on a subdirectory name to enter
+    it, or on a filename to load it into your editor.  Center-click on
+    the background to go up to the parent directory, or right-click
+    there to go back to the previous directory.  Use the mouse scroll
+    wheel on the background to page to other screenfuls of files in
+    the current directory, or on the time to display the long listings
+    (right-clicking on the time will clear the long listings).
+
 Of course, there's much, much more possible.  Type '%' within each mode
 of vshnu to see all the key commands available and what they'll do.
 Type '&' to see what file actions will be performed upon selecting files
 in the current file action mode.  Type <Control-N> followed by a key to
-see what would happen with that key command.
+see what would happen with that key command.  Type '^' to see all the
+available mouse commands.
 
 Here's a summary of the modes in the supplied configuration, with the
 keys to enter and exit each mode:
@@ -288,18 +302,31 @@ expand	"	Selected directories are expanded in the file listing,
 
 ------------------------- ADDITIONAL RESOURCES -------------------------
 
-A web forum and mailing list for discussion, support and announcements
-regarding vshnu is available at
+* The latest developer's version of the vshnu source files are available
+
+	http://www.cs.indiana.edu/~kinzler/home/binp/vshnu
+	http://www.cs.indiana.edu/~kinzler/home/etc/vshnucfg
+	http://www.cs.indiana.edu/~kinzler/home/etc/vshnurc
+
+* A web forum and mailing list for discussion, support and announcements
+  regarding vshnu is available at
 
 	http://groups.yahoo.com/group/vshnu
 
-An article on vshnu in Jerry Peek's Power Tools column
-<http://www.linux-mag.com/power/> in Linux Magazine (US version) is
-expected in the October 2005 edition.
+* An introductory article on using vshnu was published in the
+  November 2005 issue of Linux Magazine (US version) in Jerry
+  Peek's Power Tools column, pages 12-17.  It's available online at
+  <http://www.linux-mag.com/content/view/2332/>.
 
-A Japanese review and showcase of vshnu was published in the September
-2001 issue of Linux Magazine <http://www.ascii.co.jp/linuxmag/>,
-pages 124-125.
+* CaFe.pm <http://cafe.pm.org/>, a Perl Mongers group in Argentina, has
+  published an interview by Víctor A Rodríguez with Steve Kinzler about
+  vshnu in their April 2006 bulletin, issue 1.0. It's available online at
+  <http://cafe.pm.org/boletines/Issue.v1.0.pdf>, with the original English
+  version at <http://www.cs.indiana.edu/~kinzler/vshnu/perlitas.html>.
+
+* A Japanese review and showcase of vshnu was published in the September
+  2001 issue of Linux Magazine <http://www.ascii.co.jp/linuxmag/>,
+  pages 124-125.
 
 ---------------------------  GPL COPYRIGHT  ----------------------------
 
@@ -339,6 +366,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler		   revised June     2005
+http://www.cs.indiana.edu/~kinzler		       revised July 2007
 
 Your feedback is welcome!
