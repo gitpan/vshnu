@@ -2,19 +2,21 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	NAME		=> 'vshnu',
-	VERSION		=> '1.0300',	# package version; also ../*.html,
+	VERSION		=> '1.0302',	# package version; also ../*.html,
 					# mailing list?, freshmeat?, pause?
 	ABSTRACT	=> 'a visual shell supplement',
 	AUTHOR		=> 'Steve Kinzler <kinzler@cs.indiana.edu>',
 #	DATE		=> 'Nov 2000',
 #	URL		=> 'http://www.cs.indiana.edu/~kinzler/vshnu/',
+	LICENSE		=> 'GPL',
 	EXE_FILES	=> ['vshnu'],
 	PM		=> {'vshnucfg.pl' => '$(INST_LIBDIR)/vshnucfg.pl'},
 	PREREQ_PM	=> {'Term::Screen'    => '0',
 			    'Term::ANSIColor' => '0'},
 	dist		=> {COMPRESS => 'gzip -9f', SUFFIX => '.gz',
-			    POSTOP   => 'mv $(DISTVNAME)* ..; ' .
-					'(cd ..; make colorize)'},
+			    POSTOP   => 'rename s/tar.gz/tgz/ $(DISTVNAME)*;' .
+					' mv $(DISTVNAME)* ..;' .
+					' (cd ..; make colorize)'},
 );
 
 # 1.0000  07 Nov 2000	Initial public release
@@ -54,6 +56,7 @@ WriteMakefile (
 # 1.0200   1 May 2005	Add MIME type and mailcap/vshnucap support
 # 1.0211   5 Jul 2005	Fix bugs; Recognize mouse events; Search histories
 # 1.0300   8 Jul 2007	Add mouse support, new config facilities, ordered help
+# 1.0302  22 Mar 2008	Add help listing titles and coloring/sorting options
 
 sub MY::postamble { q~
 import:

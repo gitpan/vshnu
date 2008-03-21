@@ -1,8 +1,8 @@
 --- #YAML:1.0
 name:                vshnu
-version:             1.0300
+version:             1.0302
 abstract:            a visual shell supplement
-license:             ~
+license:             GPL
 generated_by:        ExtUtils::MakeMaker version 6.31
 distribution_type:   module
 requires:     

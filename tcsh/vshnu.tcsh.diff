@@ -8,7 +8,7 @@ and misleading things like "Suspended" and "(wd now: ~)" when (and only
 when) suspending from vsh* back to tcsh.
 
 This patch was generated from the tcsh 6.05.00 sources and is compatible
-with at least tcsh 6.{03-06,09,12-13}.00.
+with at least tcsh 6.{03-06,09,12-13,15}.00.
 
 *** sh.proc.c.old	Sat Jun 25 17:02:49 1994
 --- sh.proc.c	Mon Jun 27 15:58:27 1994

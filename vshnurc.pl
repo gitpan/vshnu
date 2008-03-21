@@ -14,7 +14,7 @@
 ###############################################################################
 ## Change Log #################################################################
 
-($rc::vname, $rc::version, $rc::require) = qw(vshnurc 1.0300 1.0300);
+($rc::vname, $rc::version, $rc::require) = qw(vshnurc 1.0302 1.0302);
 &addversions($rc::vname, $rc::version);
 
 &err("loaded $rc::vname $rc::version requires $cfg::vname $rc::require",
@@ -84,6 +84,8 @@
 # 1.0219  12 Jun 2007	Enhance ^S command for rcp and X cut buffer usage
 # 1.0220  13 Jun 2007	Use $cfg::xcb and &cfg::xpaste
 # 1.0300   8 Jul 2007	Version normalization
+# 1.0301  15 Jul 2007	Use enhanced &mapadd $before argument syntax
+# 1.0302  21 Feb 2008	Add @rc::faves and 7 command
 
 ###############################################################################
 ## External reconfiguration ###################################################
@@ -111,12 +113,13 @@ if ($color && getpwnam('kinzler')) {
 
 &mapset('typemap_', '', 'run -s= $cfg::editor', 0);
 
-&mapset('typemap_do', '/(^|\/|\.)mbox$/',
+$rc::Ext_mbox  = (grep(/mbox/, @typemap_do))[0];
+$rc::Ext__mbox = '/(^|\/)_(|[^_].*\.)mbox$/';
+
+&mapset('typemap_do', $rc::Ext_mbox,
 	['run -s_ "$cfg::mailer -f"', 'run the mailer on this mbox file']);
-&mapadd('typemap_',   '/(^|\/)_[^_].*\.mbox$/',
-	&mapget('typemap_do', '/(^|\/|\.)mbox$/'));
-&mapadd('typemap_do', '/(^|\/)_[^_].*\.mbox$/',
-	&mapget('typemap_', ''), '/(^|\/|\.)mbox$/');
+&mapadd('typemap_',   $rc::Ext__mbox, &mapget('typemap_do', $rc::Ext_mbox));
+&mapadd('typemap_do', $rc::Ext__mbox, &mapget('typemap_', ''), $rc::Ext_mbox);
 
 &mapadd('typemap_', '/(^|\/)_comics_[^\/]*\.html?$/',
 	 ['sh "$ENV{HTMLVIEW} < $_q"; remove $_; win',
@@ -152,9 +155,9 @@ ${&mapget('typemap_do', '-d _', 0)}[0] .= ', ifopt("C", "--color")';
 	 ['run -=p "+palm; pilot-file -d"',
 	  'view a dump of this Palm file', 'vVfF', 'view'],
 	 ['run -_R "+palm; exec pilot-xfer -i"',
-	  'download this file to a Palm',  'dDxX', 'download']], 'ext pdf');
-&mapadd('typemap_do', 'ext p(rc|qa)',
-	[@{&mapget('typemap_do', 'ext pdb')}[0, 1]], 'ext pdb');
+	  'download this file to a Palm',  'dDxX', 'download']], '>Ext o');
+&mapadd('typemap_do', 'ext prc pqa',
+	[@{&mapget('typemap_do', 'ext pdb')}[0, 1]], '>Ext o');
 &mapadd('typemap_do', 'Ext url?',
 	 ['run -s_w "xrshio - webrowse -mw <"',
 	  'browse this URL file marked up'], 'Ext uu');
@@ -194,6 +197,9 @@ $cfg::quemarkmsg = '';
 	       'cd("~oracle/post") ? longls("-win", 1) : win',
 	     'cd "~/work"; win');
 
+@rc::faves = ('/l/web/hra', '/l/web/webhra/arc', '/l/web/arc',
+	      '/l/hmrc', "/l/hmrc/$ENV{'USER'}");
+
 &mapadd('keymap_', "\cK",
 	 ['setcomplete \&rc::edtags;'
 	  . ' run "-s/", $cfg::editor, "-t", get "Tag:"',
@@ -215,6 +221,9 @@ unshift(@{$keymap_{"\cQ"}},
 	  'X', 'rcp chosen Xcutbuf$cfg::xcb']], "\cT");
 &mapadd('keymap_', ",",
 	 ['evalnext \@rc::ring', 'cycle to monitored directories'], "-");
+&mapadd('keymap_', "7",
+	 ['altls \@rc::faves, "Favorites"; win',
+	  'switch to/from the favorites display'], "8");
 &mapadd('keymap_', "@",
 	 ['run -sp "atls"', 'view the scheduled at(1) jobs'], "B");
 &mapadd('keymap_', "A",
@@ -222,7 +231,7 @@ unshift(@{$keymap_{"\cQ"}},
 	  'long list files with their POSIX ACL info'], "B");
 &mapadd('keymap_', "C",
 	 ['longls "-win", "listacls"',
-	  'long list files with their AFS ACL info'], "F");
+	  'long list files with their AFS ACL info'], ">B");
 &mapadd('keymap_', "G",
 	[['run getcmd "go"',
 	  'browse the URL guessed from the given piece(s)',
@@ -304,9 +313,9 @@ unshift(@{$keymap_{"\cQ"}},
 	 ['run -s "hmrccal"', 'browse the HMRC calendar',
 	  'C'],
 	 ['run -s "webdaily", "-v"', 'browse my daily web pages',
-	  'Dd']], "L");
+	  'Dd']], ">F");
 &mapadd('keymap_', "H",
-	 ['run -sr "dailyh"', 'run `dailyh`'], "L");
+	 ['run -sr "dailyh"', 'run `dailyh`'], ">G");
 &mapadd('keymap_', "J",
 	[['run -sp "snaps -u"',
 	  "list the user's current processes",	    'ujJ', 'user'],
@@ -316,12 +325,12 @@ unshift(@{$keymap_{"\cQ"}},
 	  "tree list the user's current processes", 'UtT', 'user tree'],
 	 ['run -sp "pstree -alp"',
 	  'tree list all system processes',	    'S',   'system tree']],
-	"L");
+	">H");
 &mapadd('keymap_', "K",
-	 ['run -sr "make"', 'run `make`'], "L");
+	 ['run -sr "make"', 'run `make`'], ">J");
 $keymap_{"M"}[0] =~ s/"make"/"mak"/;
 #&mapadd('keymap_', "N",
-#	 ['run -s "nn"', 'run `nn`'], "O");
+#	 ['run -s "nn"', 'run `nn`'], ">M");
 &mapadd('keymap_', "W",
 	 ['cd($> && $user ne "kinzler" ? "~$user" : "~/work");'
 	  . ' point "-\$"; win',
@@ -333,7 +342,7 @@ $keymap_{"Y"}[0] .= '; $cwd eq untilde("~/work") && msg filecount';
 
 &mapadd('keymap_choose', "<",
 	 ['run -s+ruk "pushmime"',
-	  'explode the chosen mail messages/folders into directories'], "@");
+	  'explode the chosen mail messages/folders into directories'], ">;");
 $keymap_choose{"D"}    =
 	[['run -#buk "rm -r"',
 	  'recursively remove the chosen files/directories (background)',
@@ -344,15 +353,15 @@ $keymap_choose{"D"}    =
 $keymap_choose{"E"}[0] = 'run -s#uk $cfg::editor';
 &mapadd('keymap_choose', "J",
 	 ['run -sruk "push", "--", @choose, getfile "Directory:"',
-	  'push the chosen files into the given directory'], "O");
+	  'push the chosen files into the given directory'], ">I");
 &mapadd('keymap_choose', "K",
-	 ['run -s#ruk "pop"', 'pop files out of the chosen directories'], "O");
+	 ['run -s#ruk "pop"', 'pop files out of the chosen directories'],">J");
 &mapadd('keymap_choose', "P",
 	 ['run -+Cuk "+palm; exec pilot-xfer -i"',
 	  'download the chosen files to a Palm'], "R");
 &mapadd('keymap_choose', "Z",
 	 ['run -#buk "z"', '(un)tar and (de)feather the chosen files'
-			   . ' and directories (background)'], "[");
+			   . ' and directories (background)'], ">R");
 &mapadd('keymap_choose', "_",
 	 ['run -+uk "_"', 'rename the chosen files without whitespace'], "`");
 

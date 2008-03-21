@@ -14,9 +14,9 @@ $debug_ch = 0;
 # http://www.cs.indiana.edu/~kinzler/home.html#unix
 
 ###############################################################################
-## Change log #################################################################
+## Change log and To do #######################################################
 
-($vname, $version) = qw(vshnu 1.0300);
+($vname, $version) = qw(vshnu 1.0302);
 
 # 1.0000   7 Nov 2000	Initial public release
 # 1.0003  13 Dec 2000	Version format x.y.z -> x.0y0z
@@ -91,6 +91,26 @@ $debug_ch = 0;
 # 1.0223  20 Apr 2007	Add PIPE handling to &sigs_*; Fix mouse support
 # 1.0224  17 May 2007	Add $userhostr and &atabsfile
 # 1.0300   8 Jul 2007	Version normalization
+# 1.0301  15 Jul 2007	Enhance &mapadd $before argument syntax
+# 1.0302  16 Mar 2008	Add map titles; Use *, H and k options
+
+# To Consider and Do:
+# * Support special zones and mouse actions in longstr
+# * Add a flag to &run that prompts for an okay before running the command
+# * Add an "asif" feature to specify files' actions as if they were other types
+#   + Perhaps an $asif variable persistently set via # command
+#   + And/or perhaps a variable like $norun for 1-time exceptions (^O or N)
+# * Add configurable per-directory/listing options (un)set on each entry/exit
+#   + Such as f in Favorites and i in Windows filesystems
+#   + Eg, %diropts = (dirpatt => 'opts', ...)
+#   + Provide a way to save the current options for the current directory
+# * Enhance command line startup flags
+#   + To give an initial set of key input (Term::Screen &stuff_input($scr))
+#   + To reset options; To output the help listings (vc /Tip/)
+# * Reorder, section and subtitle all the help listings
+# * Provide refcards from the help listings (HTML::FromANSI)
+# * Provide a man page or perldoc or such
+# * Add a shorthand for the &mapadd $before arg meaning the map's 1st position
 
 ###############################################################################
 ## Modules setup ##############################################################
@@ -332,7 +352,8 @@ sub mapadd {
 	return if $del < 0 || exists $$hmap{$key};
 	$$hmap{$key} = $val;
 	return unless @$amap || (keys %$hmap) + 0 == 1;
-	splice(@$amap, &aindex($before, @$amap), 0, $key);
+	my $n = ($before =~ s/^<//) ? 0 : ($before =~ s/^>//) ? 1 : 0;
+	splice(@$amap, &max(0, &aindex($before, @$amap) + $n), 0, $key);
 }
 sub mapdeladd { &mapadd(@_[0 .. 3],  1) }
 sub mapdel    { &mapadd(@_[0 .. 3], -1) }
@@ -354,13 +375,16 @@ sub mapset {
 sub maporder {
 	my($map)	 = @_;
 	my($hmap, $amap) = eval "(\\\%$map, \\\@$map)";
-	@$amap = sort bykeyorder keys %$hmap unless @$amap;
-	map { ($_, $$hmap{$_}) } @$amap;
+	my(@map) = (@$amap && ! &opt('k')) ? @$amap
+					   : sort bykeyorder keys %$hmap;
+	map { ($_, $$hmap{$_}) } @map;
 }
 
-sub bykeyorder { ($b eq '') ? -1 : ($a eq '') ? 1 :
-		 (length($a) == 1 && length($b) != 1) ? -1 :
-		 (length($a) != 1 && length($b) == 1) ?  1 : $a cmp $b }
+sub bykeyorder { ($b eq '')	? -1 : ($a eq '')     ?  1  :
+		 ($a =~ /^TTL/ && $b =~ /^TTL/) ? $a cmp $b :
+		 ($a =~ /^TTL/) ? -1 : ($b =~ /^TTL/) ?  1  :
+		 (length($a) == 1 && length($b) != 1) ? -1  :
+		 (length($a) != 1 && length($b) == 1) ?  1  : $a cmp $b }
 
 ###############################################################################
 ## Screen drawing subroutines #################################################
@@ -852,7 +876,7 @@ sub tag {
 }
 
 sub color {
-	return $_[0]	    if $_[0] eq '';
+	return $_[0]	    if $_[0] eq '' || $#_ <= 0 || ! &opt('*');
 	return &colored(@_) if $color;
 	($_[1] eq 'bold')    ? $bold    . $_[0] . $normal :
 	($_[1] eq 'reverse') ? $reverse . $_[0] . $normal :
@@ -961,6 +985,7 @@ sub colorperms {
 
 sub colorkey {
 	local $_ = join('', @_);
+	return $_ unless &opt('H');
 	return &color($_, $co_ckey) if $co_ckey && /^\^./;
 	return &color($_, $co_nkey) if $co_nkey && /^\\./;
 	return &color($_, $co_wkey) if $co_wkey && /^<.*>$/;
@@ -972,7 +997,8 @@ sub colorkey {
 
 sub colorcmd {
 	local $_ = join('', @_);
-	return &color($_, $co_desc) if s/^\\\\?//;
+	return &color($_, &opt('H') ? $co_desc : ()) if s/^\\\\?//;
+	return $_ unless &opt('H');
 	my $re   = join('|', @tail); my $tail = '';
 	my $com  = (s/(^|\s)(#.*)/$1/) ? $2 : '';
 	eval { $tail = ($re && s/((^|;)\s*)((($re)\s*(;|$)\s*)+)$/$1/)
@@ -1002,17 +1028,17 @@ sub colorlongline {
 ## File selection subroutines #################################################
 
 sub dotypepath {
-	my $todo = &untilde($_[0]);
-#	return &dotype($todo) if $todo =~ /^(\/|$)/;	# old behavior
-	return &dotype($todo) if $todo eq '' || $todo =~ /^\// &&   -e $todo;
-	&beep(), &win(), return		     if $todo =~ /^\// && ! -e $todo;
+	my $t = &untilde($_[0]);
+#	return &dotype($t) if $t =~ /^(\/|$)/;	# old behavior
+	return &dotype($t) if $t eq '' || $t =~ /^\// &&   -e $t;
+	&beep(), &win(), return	       if $t =~ /^\// && ! -e $t;
 
 	foreach ('', &histpaths(split(':', $ENV{'CD_PATH'}))) {
 		my $file = ((/\/$/) ? &untilde($_)	 :
-			    (/./)   ? &untilde($_) . '/' : '') . $todo;
+			    (/./)   ? &untilde($_) . '/' : '') . $t;
 		return &dotype($file) if -e $file;
 	}
-#	&dotype($todo);	# old behavior if file not found
+#	&dotype($t);	# old behavior if file not found
 	&beep(); &win();
 }
 
@@ -1049,7 +1075,7 @@ sub dotype {
 	splice(@dohist, $max) if $max >= 0;
 	foreach my $test (@$atypemap ? @$atypemap : sort keys %$typemap) {
 		return &cmdeval($$typemap{$test})
-			if $test && eval &ext_syntax($test);
+			if $test && $test !~ /^TTL/ && eval &ext_syntax($test);
 	}
 	&cmdeval($$typemap{''});
 }
@@ -1790,7 +1816,8 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 			$_ = &viewas(pack('c', $$_[0])) . '-' .
 			     &viewas(pack('c', $$_[1]));
 		}
-		push(@out, &color('UNUSED  ' . join(' ', @seq), $co_xuse));
+		push(@out, &color('UNUSED  ' . join(' ', @seq),
+				  &opt('H') ? $co_xuse : ()));
 	}
 
 	&pipeto($pagerr, @out);
@@ -1798,6 +1825,8 @@ sub help {	# -u* = list unused keys, -U* = list unused key ranges
 
 sub helpstr {
 	my($key, $prk, $tab, $cmd, $fnc, $chc) = @_; my($v1, $v2) = (0, 0);
+	return &color(&view($cmd), &opt('H') ? $co_title : ()) . "\n"
+		  if $key =~ /^TTL/;
 	return () if $cmd eq '';
 
 	$fnc = sub { @_ } unless ref $fnc;
@@ -1811,10 +1840,10 @@ sub helpstr {
 
 	$key = (length($key) == 1) ? &colorkey($v1 = &viewas($key)) :
 			&color($v1 = &view('no-double-backslash', $key),
-			       $co_code);
+			       &opt('H') ? $co_code : ());
 	$prk = (length($prk) == 0) ? ''				    :
 	       (length($prk) == 1) ? &colorkey($v2 = &viewas($prk)) :
-			&color($v2 = &view($prk), $co_code);
+			&color($v2 = &view($prk), &opt('H') ? $co_code : ());
 	$key = $key . (($prk ne '') ? " $prk" : '');
 
 	$v1  = length($v1) + (($prk ne '') ? 1 + length($v2) : 0);
@@ -1840,9 +1869,11 @@ sub keyprompt {
 		push(@p, &colorkey($v = &viewas(substr($$_[2], 0, 1))),
 			 ' ' x (8 - length($v)),
 			 ($$_[3] ne '') ?
-				&color(&view(eval("qq^$$_[3]^")), $co_prmt) :
+				&color(&view(eval("qq^$$_[3]^")),
+				       &opt('H') ? $co_prmt : ()) :
 			 ($$_[1] ne '' && ! &opt('p')) ?
-				&color(&view(eval("qq^$$_[1]^")), $co_desc) :
+				&color(&view(eval("qq^$$_[1]^")),
+				       &opt('H') ? $co_desc : ()) :
 				&colorcmd(&view($$_[0])), "\n");
 	}
 	&home(); &echo(@p);

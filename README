@@ -104,7 +104,7 @@ o Recognizes the following standard environment variables:
 
 Vshnu was inspired by and initially patterned after the program `vsh`,
 the Visual Shell <http://www.cs.indiana.edu/~kinzler/vshnu/vsh.txt>
-<http://www.cs.indiana.edu/~kinzler/vshnu/vsh-4.2k.tar.gz>.
+<http://www.cs.indiana.edu/~kinzler/vshnu/vsh-4.2k.tgz>.
 Vsh was written in the early 1980's and is pretty much obsolete bit
 rot now.  After failing to be included in a BSD distribution, it faded
 into obscurity. A SunOS port hasn't compiled since the pre-Solaris days,
@@ -316,7 +316,8 @@ expand	"	Selected directories are expanded in the file listing,
 * An introductory article on using vshnu was published in the
   November 2005 issue of Linux Magazine (US version) in Jerry
   Peek's Power Tools column, pages 12-17.  It's available online at
-  <http://www.linux-mag.com/content/view/2332/>.
+  <http://www.linux-mag.com/content/view/2332>.  There's also a bit
+  in Hebrew online at <http://linmagazine.co.il/book/view/8177>.
 
 * CaFe.pm <http://cafe.pm.org/>, a Perl Mongers group in Argentina, has
   published an interview by Víctor A Rodríguez with Steve Kinzler about
@@ -366,6 +367,6 @@ z		http://www.cs.indiana.edu/~kinzler/z
 ========================================================================
 
 Steve Kinzler <kinzler@cs.indiana.edu>			   November 2000
-http://www.cs.indiana.edu/~kinzler		       revised July 2007
+http://www.cs.indiana.edu/~kinzler		    revised January 2008
 
 Your feedback is welcome!

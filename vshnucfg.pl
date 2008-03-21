@@ -14,7 +14,7 @@ $default_vshnurc  = '';
 ###############################################################################
 ## Change Log #################################################################
 
-($cfg::vname, $cfg::version, $cfg::require) = qw(vshnucfg 1.0300 1.0300);
+($cfg::vname, $cfg::version, $cfg::require) = qw(vshnucfg 1.0302 1.0302);
 &addversions($cfg::vname, $cfg::version);
 
 &quit("$0: $cfg::vname $cfg::version requires at least $vname $cfg::require ",
@@ -102,6 +102,8 @@ $default_vshnurc  = '';
 # 1.0224  17 May 2007	Use &atabsfile; Add user@host:chosen to X command menu
 # 1.0225  13 Jun 2007	Add $cfg::xcb, &cfg::xcut and &cfg::xpaste
 # 1.0300   8 Jul 2007	Version normalization
+# 1.0301  15 Jul 2007	Use enhanced &mapadd $before argument syntax
+# 1.0302  16 Mar 2008	Add $co_title and map titles; Add *, H and k options
 
 ###############################################################################
 ## External configuration #####################################################
@@ -128,9 +130,8 @@ $pager  .= "; echo Press Return | tr -d '\\012'; sh -c 'read x' < /dev/tty"
 	if $pager  =~ /\bmore\b/ && $pager  !~ /(\s-\S*w|Press)/;
 
 # Tip: When viewing a vshnu help listing with `less`, you can save the
-# listing into a FILE with one of these `less` commands:
-#	keep color:	g|$cat > FILE<Ret>
-# or	 uncolored:	g|$sed 's/<Ctrl-V><Esc>\[[^m]*m//g' > FILE<Ret>
+# listing into a FILE with this `less` command:		g|$cat > FILE<Ret>
+# Set the vshnu H option beforehand for an uncolored version.
 
 $mailbox     = $ENV{MAIL};
 @bak	     = qw/~$/;		# regexps identifying backup files
@@ -170,6 +171,7 @@ $co_symln = ($color) ? 'yellow'	     : '';		# symlink paths
 		     : ();		# '' is a default key (name or uid)
 
 # Help/Prompt listings
+$co_title = 'reverse';					# title
 $co_key   = ($color) ? ''	     : '';		# key
 $co_ckey  = ($color) ? 'green'	     : 'bold';		# ^key
 $co_nkey  = ($color) ? 'red'	     : 'reverse';	# \key
@@ -313,7 +315,8 @@ $insertcmd = [
 # Tests beginning with "ext " and "Ext " are specially interpreted so that
 # the remainder of the test is parsed as whitespace-separated arguments.
 
-%typemap_ = @typemap_ = (
+%typemap_ = @typemap_ = (		## ##
+	'TTL_'		=> 'EDIT MODE FILE ACTIONS',
 	'/^$/'		=> 'win',
 	'-e _ && -d _'	=> ['cd $_; win', 'enter this directory'],
 	''		=> ['run -s_ $cfg::editor', 'edit this file'],
@@ -321,6 +324,7 @@ $insertcmd = [
 @typemap_ = &akeys(@typemap_);
 
 %typemap_expand = @typemap_expand = (	## " ##
+	'TTL"'		=> 'EXPAND MODE FILE ACTIONS',
 	'/^$/'		=> 'win',
 	'! -e _'	=> 'beep; win',
 	'-d _'		=> ['expandtoggle $_; win',
@@ -336,6 +340,7 @@ sub cfg::tarbrowse { &cfg::zarbrowse('tar', @_) }
 sub cfg::zipbrowse { &cfg::zarbrowse('zip', @_) }
 
 %typemap_do = @typemap_do = (		## ? ##
+'TTL?'		=> 'DO MODE FILE ACTIONS',
 '/^$/'		=> 'win',
 '! -e _'	=> 'beep; win',
 '-d _'		=> [['run -=g "ls -lR", unlessopt("a"), ifopt("L"),'
@@ -360,7 +365,7 @@ sub cfg::zipbrowse { &cfg::zarbrowse('zip', @_) }
 'Ext \d\w? man'	=> ['run -s_g "nroff -man <"', 'view this man page formatted'],
 'Ext aif[cf]? au snd'
 		=> ['run -x_ "xplay -stay"', 'play this AU/AIFF audio file'],
-'ext avi mo?v(ie)? mp4 mpe?g qt wmv'
+'ext avi mo?v(ie)? mp4 mpe?g qt wm[av]'
 		=> ['run -x= "xterm -e gmplayer"', 'play this video file'],
 'ext bmp gif ico jpe?g p[bgnp]m pcx png tiff? xbm xpm'
 		=> ['run -x_ "display"', 'display this image file'],
@@ -369,8 +374,7 @@ sub cfg::zipbrowse { &cfg::zarbrowse('zip', @_) }
 'Ext dir pag'	=> ['run -sp "makedbm -u $_rq"',
 		    'view a dump of this dbm file'],
 'Ext mp3 ogg wav'
-		=> ['run -x= "xmms -p -e"',
-		    'play this MP3/Ogg/WAV audio file'],
+		=> ['run -x= "xmms -p"', 'play this MP3/Ogg/WAV audio file'],
 'Ext (wr|vrm)l(\.g?[Zz])?'
 		=> ['run -x= "freewrl"', 'display this VRML file'],
 'Ext a'		=> ['run -s_p "ar tv"', 'list the contents of this archive'],
@@ -467,9 +471,10 @@ sub cfg::zipbrowse { &cfg::zarbrowse('zip', @_) }
 ###############################################################################
 ## Main keymap configuration ##################################################
 
-$cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
+$cfg::quemarkmsg = 'For help, press % or ^ or &; To quit, press ^Q';
 
-%keymap_ = @keymap_ = (
+%keymap_ = @keymap_ = (		## ##
+'TTL_'	=> 'MAIN MODE KEY COMMANDS',
 "\cA"	=> ['cd pwd; win', "cd to the current directory's hard path"],
 "\cB"	=> ['@bagkeys ? rebag : rebag(@cfg::savebagkeys)',
 	    "toggle the bag's presence"],
@@ -591,7 +596,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 	    'long list files with their owning RPM package'],
 "Q"	=> ['longls "-win", gets "Command:"',
 	    'long list files with the queried shell command output'],
-"T"	=> ['run -s "top -S"', 'run `top -S`'],
+"T"	=> ['run -s "top"', 'run `top`'],
 "U"	=> ['collapse lsall; win', 'collapse all the display files'],
 "V"	=> ['stop; winch', 'suspend to the master shell'],
 "X"	=> [['cfg::xcut $cwd',		# see also mousemap_ below
@@ -642,12 +647,12 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 );
 @keymap_ = &akeys(@keymap_);
 
-&mapadd('keymap_', "\cZ",  $keymap_{"\cQ"}, "\c[");	# screen(1) special
-&mapadd('keymap_', "\177", $keymap_{"\cH"}, "kd");
-&mapadd('keymap_', "del",  $keymap_{"\cH"}, "kd");
-&mapadd('keymap_', "end",  $keymap_{"\c["}, "kd");	# protocol esc char?
-&mapadd('keymap_', "home", $keymap_{"~"},   "kd");	# protocol esc char?
-&mapadd('keymap_', "ins",  $keymap_{"\cI"}, "kd");
+&mapadd('keymap_', "\cZ",  $keymap_{"\cQ"}, ">\cY");	# screen(1) special
+&mapadd('keymap_', "\177", $keymap_{"\cH"}, "<kd");
+&mapadd('keymap_', "del",  $keymap_{"\cH"}, "<kd");
+&mapadd('keymap_', "end",  $keymap_{"\c["}, "<kd");	# protocol esc char?
+&mapadd('keymap_', "home", $keymap_{"~"},   "<kd");	# protocol esc char?
+&mapadd('keymap_', "ins",  $keymap_{"\cI"}, "<kd");
 # numbered function keys might be usable as "k1"-"k12" or "k0"-"k9"
 
 ###############################################################################
@@ -658,6 +663,7 @@ $cfg::quemarkmsg = 'For help, press % or &; To quit, press ^Q';
 
 $cfg::unchoose = '; unchoose @choose; keymap; winch';
 %keymap_choose = @keymap_choose = (	## / ##
+'TTL/'	=> 'CHOOSE MODE KEY COMMANDS',
 "\cB"	=> ['choose @bagfiles', 'choose all the bag files'],
 "\cE"	=> ['map { dotype } @choose',
 	    'act on each chosen file in turn by its type'],
@@ -718,6 +724,7 @@ $cfg::unchoose = '; unchoose @choose; keymap; winch';
 ## "Options" keymap configuration #############################################
 
 %keymap_opts = @keymap_opts = (		## O ##
+	'TTLO'	=> 'OPTS MODE KEY COMMANDS',
 	"\cN"	=> $keymap_{"\cN"},
 	"%"	=> ['help "-unused", "=keymap_opts"; winch',
 		    'list the commands for the option key mode'],
@@ -727,16 +734,18 @@ $cfg::unchoose = '; unchoose @choose; keymap; winch';
 	""	=> ['beep; keymap; home', 'invalid option'],
 );
 @keymap_opts = &akeys(@keymap_opts);
-$optkeys = '#/ABCDFILNPSTVXabcdfghilmnoprstuv';	# enabled options
-$optons  = ($color) ? 'CVn' : 'V';		# options with toggled meaning
+$optkeys = '#*/ABCDFHILNPSTVXabcdfghiklmnoprstuv';	# enabled options
+$optons  = ($color) ? '*CHVn' : 'V';		# options with toggled meaning
 %cfg::desc_opts = (
 	"#"	=> "list inode number instead of size in long listings",
+	"*"	=> "use color",
 	"/"	=> "sort by increasing path depth",
 	"A"	=> "don't list . and ..",
 	"B"	=> "don't list backup files",
 	"C"	=> "color files",
 	"D"	=> "segregate directories to the list top",
 	"F"	=> "sort by file color",
+	"H"	=> "color command listings and prompts",
 	"I"	=> "sort by increasing inode",
 	"L"	=> "follow symlinks for long listings, stat sorting, etc",
 	"N"	=> "show/sort owners and groups by ids not names",
@@ -753,6 +762,7 @@ $optons  = ($color) ? 'CVn' : 'V';		# options with toggled meaning
 	"g"	=> "sort by group or increasing gid",
 	"h"	=> "long list a symlink's stats not its destination, etc",
 	"i"	=> "sort case-insensitively",
+	"k"	=> "sort command listings by key",
 	"l"	=> "sort by decreasing number of links",
 	"m"	=> "sort by decreasing permissions mode",
 	"n"	=> "color long listings",
@@ -802,7 +812,8 @@ sub opton {
 
 %cfg::typering = ('' => 'do', 'do' => 'expand', 'expand' => '');
 
-%mousemap_ = @mousemap_ = (
+%mousemap_ = @mousemap_ = (		## ##
+'TTL_'		=> 'MOUSE COMMANDS',
 'user'		=> [[@{$keymap_{"~"}},		   &mev2c('1u')]],
 'dir'		=> [['setopt "t"; win', ${$keymap_opts{"t"}}[1],
 						   &mev2c('1u')],
@@ -885,11 +896,12 @@ sub opton {
 		    [@{$keymap_{"\c["}}, &mev2c('cWu')]],
 );
 @mousemap_ = &akeys(@mousemap_);
-&mapadd('mousemap_', 'page',	$mousemap_{'state'},   'title');
-&mapadd('mousemap_', 'filetag',	$mousemap_{'file'},    'file...');
-&mapadd('mousemap_', 'file/',	$mousemap_{'file...'}, 'longls');
+&mapadd('mousemap_', 'page',	$mousemap_{'state'},   '<title');
+&mapadd('mousemap_', 'filetag',	$mousemap_{'file'},    '>file');
+&mapadd('mousemap_', 'file/',	$mousemap_{'file...'}, '>file...');
 
-%mousemap_test = @mousemap_test = (
+%mousemap_test = @mousemap_test = (	## ##
+'TTLt'		=> 'TEST MODE MOUSE COMMANDS',
 'time_'		=> $mousemap_{'time_'},
 ''		=> ['msg mousetxt', 'report the mouse event'],
 );
